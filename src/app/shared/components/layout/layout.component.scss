@@ -1,0 +1,43 @@
+.full-container {
+  height: 100vh;
+}
+
+.imsb-sidebar {
+  width: 260px;
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
+
+  .sidebar-header {
+    padding: 20px;
+    background-color: #003399; // Azul San Bernardo
+    color: white;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    letter-spacing: 0.5px;
+    font-size: 14px;
+    text-transform: uppercase;
+  }
+}
+
+// Estilo para el ítem de menú activo
+.active-menu-item {
+  background-color: rgba(255, 204, 0, 0.1) !important; // Amarillo suave
+  color: #003399 !important;
+  border-left: 4px solid #FFCC00; // Borde amarillo San Bernardo
+  
+  mat-icon {
+    color: #003399 !important;
+  }
+}
+
+.main-content {
+  padding: 20px;
+  background-color: #f8f9fa;
+  min-height: calc(100vh - 64px); // Ajuste según altura del header
+}
+
+mat-nav-list {
+  padding-top: 10px;
+}

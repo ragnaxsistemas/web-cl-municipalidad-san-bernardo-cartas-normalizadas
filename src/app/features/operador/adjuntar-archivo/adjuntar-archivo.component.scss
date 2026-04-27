@@ -1,0 +1,92 @@
+.upload-card {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 20px;
+  text-align: center;
+  border: 2px dashed #003399;
+  background-color: #f9f9f9;
+}
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+
+  .big-icon {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 10px;
+  }
+
+  .file-name {
+    color: #2e7d32;
+    background: #e8f5e9;
+    padding: 10px 20px;
+    border-radius: 4px;
+  }
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.history-section {
+  margin-top: 30px;
+  
+  h3 {
+    color: #003399;
+    font-size: 1.1rem;
+    border-bottom: 2px solid #ffcc00;
+    padding-bottom: 8px;
+    margin-bottom: 15px;
+  }
+}
+
+.badge-tipo {
+  background: #003399;
+  color: white;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.folder-label {
+  font-family: 'Monaco', 'Consolas', monospace;
+  background-color: #f4f4f4;
+  padding: 2px 5px;
+  color: #d32f2f; // Rojo para que resalte la fecha
+}
+
+.separator {
+  color: #999;
+  margin: 0 4px;
+}
+
+.file-label {
+  color: #333;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  background: #f9f9f9;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+
+  .full-width {
+    width: 100%;
+  }
+
+  .actions-container {
+    margin-top: 15px; // 🚩 Separación con el input de arriba
+    display: flex;
+    justify-content: flex-end; // Alinea el botón a la derecha
+    gap: 12px; // 🚩 Espacio entre botones si agregas otro (ej: Cancelar)
+  }
+}

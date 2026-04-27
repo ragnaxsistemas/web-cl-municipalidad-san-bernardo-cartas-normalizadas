@@ -1,0 +1,50 @@
+.login-container {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f4f4f4;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+  border-top: 5px solid #FFCC00; // Amarillo IMSB
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 20px;
+  h1 { color: #003399; margin: 10px 0 0; font-size: 24px; }
+  p { color: #666; }
+}
+
+.full-width { width: 100%; margin-bottom: 10px; }
+
+.btn-login {
+  width: 100%;
+  background-color: #003399 !important;
+  color: white !important;
+  padding: 25px;
+  font-size: 16px;
+}
+
+.login-error-message {
+  background-color: #ffebee;
+  color: #c62828;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  border-left: 5px solid #d32f2f;
+  font-size: 14px;
+  
+  mat-icon {
+    margin-right: 8px;
+    font-size: 20px;
+    height: 20px;
+    width: 20px;
+  }
+}

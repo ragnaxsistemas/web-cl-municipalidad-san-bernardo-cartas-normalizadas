@@ -1,0 +1,45 @@
+.imsb-header {
+  background-color: #003399; // Azul institucional
+  color: white;
+  display: flex;
+  align-items: center;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 20px; // Espacio uniforme entre elementos
+}
+
+.user-name {
+  color: white;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.business-unit {
+  color: #FFCC00; // Amarillo institucional San Bernardo
+  font-weight: 700;
+  font-size: 13px;
+  border-left: 1px solid rgba(255, 255, 255, 0.3); // Separador sutil
+  padding-left: 15px;
+  letter-spacing: 0.5px;
+}
+
+.btn-logout {
+  background-color: #d32f2f !important;
+  color: white !important;
+  min-width: 80px !important;
+  height: 32px !important;
+  border-radius: 16px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  
+  &:hover {
+    background-color: #b71c1c !important;
+  }
+}

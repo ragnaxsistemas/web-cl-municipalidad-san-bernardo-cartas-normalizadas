@@ -1,0 +1,81 @@
+<div class="container">
+  <h2>{{ tituloPagina() }}</h2>
+
+  <div class="history-section" *ngIf="resultados().length > 0">
+    <div class="header-flex">
+      <h3>Archivos Pendientes de Procesamiento</h3>
+    </div>
+    
+    <table mat-table [dataSource]="resultados()" class="mat-elevation-z8">
+      
+      <ng-container matColumnDef="proceso">
+        <th mat-header-cell *matHeaderCellDef> Proceso </th>
+        <td mat-cell *matCellDef="let element"> 
+          <span class="badge-tipo" [ngClass]="element.tipo">
+            {{ element.tipo | uppercase }}
+          </span> 
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="unidad">
+        <th mat-header-cell *matHeaderCellDef> Unidad </th>
+        <td mat-cell *matCellDef="let element"> {{ element.unidad }} </td>
+      </ng-container>
+
+      <ng-container matColumnDef="ubicacion">
+        <th mat-header-cell *matHeaderCellDef> Ubicación del Archivo </th>
+        <td mat-cell *matCellDef="let element"> 
+          <div class="path-container">
+            <mat-icon class="path-icon">folder_open</mat-icon>
+            <span class="folder-tag">{{ element.carpeta }}</span>
+            <span class="path-separator">/</span>
+            <span class="file-tag">{{ element.nombre }}</span>
+          </div>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="creacion">
+        <th mat-header-cell *matHeaderCellDef> Fecha de Creación </th>
+        <td mat-cell *matCellDef="let element"> 
+          {{ element.creacion | date:'dd/MM/yyyy HH:mm' }} 
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="observacion">
+        <th mat-header-cell *matHeaderCellDef> Observación </th>
+        <td mat-cell *matCellDef="let element">
+          <span class="obs-text">{{ element.observacion || '---' }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef> Acciones </th>
+        <td mat-cell *matCellDef="let element">
+          <button mat-icon-button color="primary" 
+                  matTooltip="Procesar Archivo" 
+                  (click)="procesarArchivo(element)">
+            <mat-icon>play_circle_outline</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+  </div>
+</div>
+
+<ng-template #loadingDialog>
+  <div style="padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 15px;">
+    <h2 mat-dialog-title style="margin: 0;">Procesando</h2>
+    <mat-dialog-content>
+      <div style="text-align: center;">
+        <mat-spinner diameter="50" style="margin: 0 auto;"></mat-spinner>
+        <p style="margin-top: 15px; color: #666;">
+          Generando cartas de cobranza... <br>
+          Este proceso puede tardar unos minutos.
+        </p>
+      </div>
+    </mat-dialog-content>
+  </div>
+</ng-template>

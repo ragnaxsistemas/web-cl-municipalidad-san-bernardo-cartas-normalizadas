@@ -1,0 +1,33 @@
+<mat-sidenav-container class="full-container">
+  
+  <mat-sidenav #sidenav 
+             [mode]="authService.isAuthenticated() ? 'side' : 'over'" 
+             [opened]="authService.isAuthenticated()" 
+             class="imsb-sidebar">
+    
+    <div class="sidebar-header">
+      
+      <span>Menú Operaciones</span>
+    </div>
+
+    <mat-nav-list>
+      @for (menu of authService.userMenus(); track menu.id) {
+        <a mat-list-item 
+           [routerLink]="menu.value2" 
+           routerLinkActive="active-menu-item">
+          <mat-icon matListItemIcon>chevron_right</mat-icon>
+          <span matListItemTitle>{{ menu.value1 }}</span>
+        </a>
+      }
+    </mat-nav-list>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <app-header (toggleSidebar)="sidenav.toggle()"></app-header>
+    
+    <div class="main-content">
+      <router-outlet></router-outlet>
+    </div>
+  </mat-sidenav-content>
+
+</mat-sidenav-container>

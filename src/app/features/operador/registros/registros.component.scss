@@ -1,0 +1,139 @@
+.container {
+  padding: 20px;
+  
+  h2 {
+    color: var(--imsb-blue);
+    border-bottom: 2px solid var(--imsb-yellow);
+    padding-bottom: 10px;
+  }
+}
+
+.full-width {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+table {
+  width: 100%;
+}
+
+.mat-column-acciones {
+  width: 80px;
+  text-align: center;
+}
+
+.mat-column-icono {
+  width: 40px;
+  padding-right: 0 !important;
+}
+
+// Icono de Carpeta (Amarillo San Bernardo)
+mat-icon[color="accent"] {
+  color: #FFCC00 !important; 
+}
+
+// Icono de Archivo/Descarga (Azul San Bernardo)
+mat-icon[color="primary"] {
+  color: #003399 !important;
+}
+
+// Para el botón de acciones
+.mat-mdc-button-base {
+  mat-icon {
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+
+  .btn-volver {
+    height: 48px;
+    border-radius: 8px;
+    font-weight: 600;
+    
+    mat-icon {
+      margin-right: 5px;
+    }
+  }
+
+  .search-field {
+    flex-grow: 1;
+    // Eliminamos el margen inferior por defecto de Material
+    ::ng-deep .mat-mdc-text-field-wrapper {
+      padding-bottom: 0;
+    }
+  }
+}
+
+.folder-icon {
+  color: #FFCC00; // Amarillo San Bernardo
+}
+
+.file-icon {
+  color: #003399; // Azul San Bernardo
+}
+
+.link-carpeta {
+  color: #003399;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+    color: #d32f2f; // Un toque rojo al pasar el mouse
+  }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center; // Alinea centros verticalmente
+  gap: 16px;
+  margin-bottom: 24px;
+  width: 100%;
+
+  .btn-volver {
+    height: 56px; // Igualamos a la altura estándar del mat-form-field outline
+    font-weight: 600;
+    letter-spacing: 1px;
+    border-radius: 4px;
+  }
+
+  .search-field {
+    flex: 1;
+    // Quitamos el espacio del "hint/error" para que el margen inferior sea parejo al botón
+    ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+      display: none;
+    }
+  }
+}
+
+.pdf-icon {
+  color: #e53935; /* Rojo PDF */
+  vertical-align: middle;
+  margin-right: 8px;
+  font-size: 20px;
+}
+
+td.mat-column-nombre {
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.breadcrumb {
+  display: block; // Asegura que el margin funcione correctamente
+  margin-bottom: 20px; // Ajusta este valor según necesites
+  font-size: 0.9rem;
+  color: #666;
+  
+  strong {
+    color: #333;
+  }
+}

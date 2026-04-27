@@ -1,0 +1,147 @@
+<div class="container">
+  <h2>Adjuntar archivo para Normalizar</h2>
+
+  <mat-card class="upload-card">
+    <mat-card-content>
+      <div class="drop-zone">
+        <mat-icon color="primary" class="big-icon">cloud_upload</mat-icon>
+        
+        <p *ngIf="!archivoSeleccionado()">Seleccione un archivo en formato Excel</p>
+        <p *ngIf="archivoSeleccionado()" class="file-name">
+          <strong>Archivo listo:</strong> {{ archivoSeleccionado()?.name }}
+        </p>
+
+        <input type="file" 
+       #fileInput 
+       (change)="onFileSelected($event)" 
+       accept=".xlsx" 
+       style="display: none">
+        
+        <div class="upload-form">
+  <input type="file" 
+         #fileInput 
+         style="display: none" 
+         accept=".xlsx" 
+         (change)="onFileSelected($event)">
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>Ingrese nombre CD</mat-label>
+    <input matInput [ngModel]="headerTexto()" (ngModelChange)="headerTexto.set($event)" placeholder="Ej: CD-1000">
+  </mat-form-field>
+  
+  <div class="actions-container">
+    <button mat-raised-button 
+            type="button"
+            color="accent" 
+            (click)="fileInput.click()">
+      <mat-icon>attach_file</mat-icon>
+      SELECCIONAR ARCHIVO
+    </button>
+
+    <button mat-raised-button 
+            color="primary" 
+            (click)="upload()" 
+            [disabled]="!archivoSeleccionado()">
+      SUBIR Y NORMALIZAR
+    </button>
+  </div>
+</div>
+
+<div *ngIf="archivoSeleccionado()" class="file-info">
+  <mat-icon>insert_drive_file</mat-icon>
+  <span>{{ archivoSeleccionado()?.name }}</span>
+</div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <div class="history-section" *ngIf="resultados().length > 0">
+    <h3>Últimos archivos cargados</h3>
+    
+    <table mat-table [dataSource]="resultados()" class="mat-elevation-z8">
+      
+      <ng-container matColumnDef="tipo">
+        <th mat-header-cell *matHeaderCellDef> Proceso </th>
+        <td mat-cell *matCellDef="let element"> 
+          <span class="badge-tipo">{{ element.tipo | uppercase }}</span> 
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="unidad">
+        <th mat-header-cell *matHeaderCellDef> Unidad </th>
+        <td mat-cell *matCellDef="let element"> {{ element.unidad }} </td>
+      </ng-container>
+
+      <ng-container matColumnDef="nombre">
+        <th mat-header-cell *matHeaderCellDef> Ubicación del Archivo </th>
+        <td mat-cell *matCellDef="let element"> 
+          <mat-icon style="font-size: 18px; vertical-align: middle; color: #666;">folder_open</mat-icon>
+          <span class="folder-label">{{ element.carpeta }}</span>
+          <span class="separator"> / </span>
+          <span class="file-label">{{ element.nombre }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="observacion">
+        <th mat-header-cell *matHeaderCellDef> Nombre CD </th>
+        <td mat-cell *matCellDef="let element">
+          <span class="text-secondary">
+            {{ element.observacion || '---' }}
+          </span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="creacion">
+        <th mat-header-cell *matHeaderCellDef> Fecha de Carga </th>
+        <td mat-cell *matCellDef="let element"> 
+          {{ element.creacion | date:'dd/MM/yyyy HH:mm' }} 
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+  <th mat-header-cell *matHeaderCellDef> Descargas </th>
+  <td mat-cell *matCellDef="let element">
+    
+    <button mat-icon-button 
+        color="primary" 
+        [disabled]="!element.nombreExcel"
+        (click)="descargarExcel(element)"
+        [matTooltip]="element.nombreExcel ? 'Archivo Adjuntado: ' + element.nombreExcel : 'Sin archivo'">
+      <mat-icon>grid_on</mat-icon>
+    </button>
+
+    <button mat-icon-button 
+            color="accent" 
+            [disabled]="!element.nombreCsv"
+            (click)="descargarCsv(element)"
+            [matTooltip]="element.nombreCsv ? 'Archivo enviado a Normalizar: ' + element.nombreCsv : 'No disponible'">
+      <mat-icon>description</mat-icon>
+    </button>
+
+  </td>
+</ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+</div>
+</div>
+
+<ng-template #loadingDialog>
+  <div class="loading-container">
+    <mat-dialog-content>
+      <div class="spinner-wrapper">
+        <mat-progress-spinner 
+          mode="indeterminate" 
+          diameter="50" 
+          color="primary">
+        </mat-progress-spinner>
+        <div class="loading-text">
+          <h3>Subiendo archivo...</h3>
+          <p>Por favor, no cierre la ventana. Estamos procesando los datos
+             para ser enviados a Normalización.</p>
+        </div>
+      </div>
+    </mat-dialog-content>
+  </div>
+</ng-template>

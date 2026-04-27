@@ -1,0 +1,94 @@
+<div class="container">
+  <div class="header-banner">
+    <h2>{{ tituloPagina() }}</h2>
+    <span class="breadcrumb">
+      {{ tipoDocumento() | uppercase }} / 
+      <strong>{{ obtenerUnidadLimpia() | uppercase }}</strong>
+      <span *ngIf="rutaNavegacion().length > 0"> / {{ rutaNavegacion().join(' / ') }}</span>
+    </span>
+  </div>
+
+  <div class="header-actions">
+    <button mat-flat-button color="primary" 
+            (click)="volverAtras()" 
+            [disabled]="rutaNavegacion().length === 0" 
+            class="btn-volver">
+      <mat-icon>arrow_back</mat-icon> Volver
+    </button>
+
+    <mat-form-field appearance="outline" class="search-field">
+      <mat-label>Buscar en este nivel...</mat-label>
+      <input matInput 
+             [ngModel]="filtroNombre()" 
+             (ngModelChange)="onBuscar($event)"
+             placeholder="Ej: CD-FTX...">
+      <mat-icon matSuffix>search</mat-icon>
+    </mat-form-field>
+  </div>
+
+  <div class="table-container mat-elevation-z8">
+    <div class="loading-shade" *ngIf="cargando()">
+      <mat-spinner strokeWidth="3" diameter="50"></mat-spinner>
+    </div>
+
+    <table mat-table [dataSource]="dataSource()">
+      
+      <ng-container matColumnDef="icono">
+        <th mat-header-cell *matHeaderCellDef width="50"></th>
+        <td mat-cell *matCellDef="let element">
+          <mat-icon class="folder-icon" *ngIf="element.esDirectorio">folder</mat-icon>
+          <mat-icon class="file-icon" *ngIf="!element.esDirectorio">description</mat-icon>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="nombre">
+        <th mat-header-cell *matHeaderCellDef> Nombre / Proceso </th>
+        <td mat-cell *matCellDef="let element"> 
+          <span class="link-carpeta" *ngIf="element.esDirectorio" (click)="navegarACarpeta(element.nombre)">
+            {{ element.nombre }}
+          </span>
+          <div *ngIf="!element.esDirectorio" class="file-info">
+            <span class="file-name">{{ element.nombre }}</span>
+            <small class="file-meta" *ngIf="element.usuario">Subido por: {{ element.usuario }}</small>
+          </div>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="observacion">
+        <th mat-header-cell *matHeaderCellDef> Observación </th>
+        <td mat-cell *matCellDef="let element">
+          <span class="obs-text">{{ element.observacion || '---' }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef width="100"> Acciones </th>
+        <td mat-cell *matCellDef="let element">
+          <button mat-icon-button color="primary" 
+                  *ngIf="!element.esDirectorio" 
+                  (click)="descargar(element.nombre)" 
+                  matTooltip="Descargar">
+            <mat-icon>download</mat-icon>
+          </button>
+          <mat-icon class="icon-neutro" *ngIf="element.esDirectorio">chevron_right</mat-icon>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+
+      <tr class="mat-row" *matNoDataRow>
+        <td class="mat-cell" colspan="4" style="text-align: center; padding: 20px;">
+          No se encontraron registros en "{{ rutaNavegacion().join('/') || 'Raíz' }}"
+        </td>
+      </tr>
+    </table>
+
+    <mat-paginator [length]="totalElementos()"
+                   [pageSize]="pageSize()"
+                   [pageSizeOptions]="[10, 25, 50, 100]"
+                   (page)="onCambiarPagina($event)"
+                   aria-label="Seleccionar página">
+    </mat-paginator>
+  </div>
+</div>

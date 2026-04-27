@@ -1,1 +1,20 @@
-/* You can add global styles to this file, and also import other style files */
+/* src/styles.scss */
+:root {
+  --imsb-blue: #003399;
+  --imsb-yellow: #FFCC00;
+  --imsb-white: #ffffff;
+  --imsb-gray: #f4f4f4;
+}
+
+body {
+  margin: 0;
+  font-family: Roboto, "Helvetica Neue", sans-serif;
+  background-color: var(--imsb-gray);
+}
+
+/* Clase de utilidad para botones institucionales */
+.btn-imsb {
+  background-color: var(--imsb-blue) !important;
+  color: var(--imsb-yellow) !important;
+  font-weight: bold;
+}
