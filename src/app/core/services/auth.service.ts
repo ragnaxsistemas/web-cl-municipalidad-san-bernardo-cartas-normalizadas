@@ -105,6 +105,32 @@ export class AuthService {
     }
   }
 
+  obtenerCodEmpresa(): string {
+  // Intentamos sacar el dato del signal primero
+  const user = this.userState();
+  
+  // Opción A: Si viene en el campo unidadNegocio (ajusta 'id' o 'codigo' según tu modelo)
+  if (user?.unidadNegocio) {
+    // Si unidadNegocio es un objeto, busca la propiedad correcta, ej: user.unidadNegocio.id
+    return typeof user.unidadNegocio === 'object' 
+      ? (user.unidadNegocio as any).codigo 
+      : user.unidadNegocio;
+  }
+
+  // Opción B: Backup desde localStorage si el signal está vacío
+  const storedUnidad = localStorage.getItem('unidadNegocio');
+  if (storedUnidad) {
+    try {
+      const unidadObj = JSON.parse(storedUnidad);
+      return unidadObj.codigo || unidadObj; // Ajusta según la estructura real
+    } catch {
+      return storedUnidad;
+    }
+  }
+
+  return 'IMSB'; // Valor por defecto o manejo de error
+}
+
   getToken(): string | null {
     return localStorage.getItem('token');
   }

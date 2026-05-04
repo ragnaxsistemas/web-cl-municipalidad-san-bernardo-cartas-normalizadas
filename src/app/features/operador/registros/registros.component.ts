@@ -14,8 +14,16 @@ import { ArchivoDetalle, RespuestaListar } from '@core/models/auth.model'; // Im
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator'; 
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { HttpParams } from '@angular/common/http';
+import { Observable, forkJoin, of } from 'rxjs';
 
+export interface FilaProceso {
+  nombre: string;         // El nombre de la carpeta CD-FTX...
+  esDirectorio: true;
+  pdfReporte?: string;    // Nombre del archivo PDF en /REPORTES
+  pdfConsolidado?: string; // Nombre del archivo PDF en /CARTAS_CONSOLIDADAS
+  excelOriginal?: string; // Nombre del archivo XLSX en /upload/...
+  cargandoDetalle?: boolean;
+}
 
 @NgComponent({
   selector: 'app-registros',
@@ -47,6 +55,10 @@ export class RegistrosComponent implements OnInit {
   // La rutaActual ahora solo guardará las subcarpetas después de la base
   // Ejemplo: ['2026_04_03', 'lote_01']
   rutaNavegacion = signal<string[]>([]);
+// Signals para el Selector de Unidades
+  unidadesCombo = signal<any[]>([]);
+  unidadSeleccionada = signal<any | null>(null);
+  mostrarSelectorUnidad = signal(false); // Para mostrar/ocultar el combo en el HTML
 
   totalElementos = signal(0);
   pageSize = signal(10);
@@ -77,85 +89,235 @@ export class RegistrosComponent implements OnInit {
   }
 
   ngOnInit() {
-  this.route.data.subscribe(data => {
-    this.tipoDocumento.set(data['tipo'] || 'cobranza');
-    this.tituloPagina.set(data['titulo'] || 'Consultas');
+    this.route.data.subscribe(data => {
+      // Capturamos el tipo desde la ruta definida arriba
+      const tipoRuta = data['tipo']; 
+      this.tipoDocumento.set(tipoRuta);
+      this.tituloPagina.set(data['titulo'] || 'Consultas');
+      
+      this.rutaNavegacion.set([]); 
+      this.paginaActual.set(0);
+
+      const unidadOriginal = localStorage.getItem('codigo_unidad') || '';
+      const unidadLimpia = unidadOriginal.replace('imsb_', '');
+
+      // 🚩 CORRECCIÓN: Si la ruta es de imprenta O el usuario es imprenta/admin
+      if (tipoRuta === 'imprenta' || unidadLimpia === 'imprenta' || unidadLimpia === 'admin') {
+        this.mostrarSelectorUnidad.set(true);
+        this.cargarUnidadesHabilitadas(unidadLimpia);
+      } else {
+        this.mostrarSelectorUnidad.set(false);
+        this.cargarNivel(); 
+      }
+    });
+  }
+
+  /**Para administracion e imprenta */
+  cargarUnidadesHabilitadas(unidadLimpia: string) {
+    // Obtenemos 'imsb_reportes' desde el AuthService
+    const codEmpresa = this.authService.obtenerCodEmpresa() || 'imsb_reportes'; 
     
-    // Limpiamos todo rastro de navegación previa
-    this.rutaNavegacion.set([]);
-    this.paginaActual.set(0);
-    this.archivos.set([]);
-    this.carpetas.set([]);
+    this.dataService.get<any[]>(`carpetas-habilitadas/unidad/${codEmpresa}`).subscribe({
+      next: (unidades) => {
+        // Formateamos las unidades para que el 'codigoUnidad' no tenga el prefijo 'imsb_'
+        // Esto es vital para que ejecutarCargaEstandar use la ruta correcta (ej: /listar/cobranza/tesoreria)
+        const unidadesFormateadas = unidades.map(u => ({
+          ...u,
+          codigoUnidadLimpia: u.codigoUnidad.replace('imsb_', '')
+        }));
+        
+        this.unidadesCombo.set(unidadesFormateadas);
+      },
+      error: (err) => console.error("Error cargando unidades", err)
+    });
+  }
 
-    // Dejamos que el servidor nos diga qué carpetas existen en:
-    // listar/{tipoDoc}/{unidad}/
-    this.cargarNivel(); 
-  });
-}
+  onSeleccionUnidad(event: Event) {
+    const codUnidad = (event.target as HTMLSelectElement).value;
+    const unidad = this.unidadesCombo().find(u => u.codigoUnidad === codUnidad);
+    
+    if (unidad) {
+      // Determinamos el tipo de navegación por el nombre mostrado (showNombreUnidad)
+      const nombreLower = unidad.showNombreUnidad.toLowerCase();
+      let tipoNavegacion = "cobranza"; 
+      
+      if (nombreLower.includes("juzgado")) {
+        tipoNavegacion = "notificacion";
+      }
 
+      const unidadLimpia = unidad.codigoUnidad.replace('imsb_', '');
+
+      this.unidadSeleccionada.set({
+        ...unidad,
+        tipoNavegacion: tipoNavegacion,
+        codigoUnidadLimpia: unidadLimpia
+      });
+
+      // Actualizamos estados y disparamos carga
+      this.tipoDocumento.set(tipoNavegacion);
+      this.rutaNavegacion.set([]); // Reset de carpetas al cambiar unidad
+      
+      this.ejecutarCargaEstandar(unidadLimpia, tipoNavegacion, []);
+    }
+  }
   /**
    * 🚩 CAMBIO PRINCIPAL: Adaptación al DataService refactorizado
    */
   cargarNivel() {
     this.cargando.set(true);
+    const unidadOriginal = localStorage.getItem('codigo_unidad') || 'tesoreria';
+    const unidadLimpia = unidadOriginal.replace('imsb_', '');
+    const nav = this.rutaNavegacion(); // Signal con el array de navegación
+    const tipoDoc = this.tipoDocumento(); // Signal con 'cobranza' o 'notificacion'
 
-    // 1. Obtener y limpiar la unidad del localStorage
-    // imsb_tesoreria -> tesoreria
-    const unidadRaw = localStorage.getItem('codigo_unidad') || 'tesoreria';
-    const unidadLimpia = unidadRaw.replace('imsb_', '');
-
-    const tipoDoc = this.tipoDocumento(); // 'cobranza'
-    const nav = this.rutaNavegacion();    // ['CD-FTX_2026...', 'REPORTES']
-
-    /**
-     * 2. CONSTRUCCIÓN DE LA URL
-     * Forzamos la unidad como el segundo segmento después del tipo de documento.
-     */
-    let url = `listar/${tipoDoc}/${unidadLimpia}`;
-
-    // Si hay navegación interna (procesos, carpetas), la concatenamos
-    if (nav.length > 0) {
-      url += `/${nav.join('/')}`;
+    // Lógica para IMPRENTA
+    if (unidadLimpia === 'imprenta') {
+        if (nav.length === 0) {
+            // Si está en la raíz, ve TODO (multicarpeta)
+            this.cargarVistaMulticarpetaImprenta();
+        } else {
+            // Si ya entró a una carpeta (ej: CD-100), debemos saber a qué unidad pertenece
+            // Aquí hay un truco: si el usuario es imprenta, el primer nivel de nav[0] 
+            // debería ayudarnos a identificar si viene de tesoreria o juzgado.
+            // Si no guardas el origen, podrías usar la carga estándar con una unidad base.
+            this.ejecutarCargaEstandar(unidadLimpia, tipoDoc, nav);
+        }
+    } else {
+        // Lógica para unidades NORMALES (tesoreria, 1juzgado, etc)
+        this.ejecutarCargaEstandar(unidadLimpia, tipoDoc, nav);
     }
+}
 
-    // 3. Parámetros
-    const params = {
-      page: this.paginaActual().toString(),
-      size: this.pageSize().toString(),
-      nombre: this.filtroNombre() || ''
-    };
+// CORRECCIÓN: Los parámetros son (nombre: tipo), no (this.metodo())
+  ejecutarCargaEstandar(unidadLimpia: string, tipoDoc: string, nav: string[]) { 
+    this.cargando.set(true);
 
-    console.log(`🚀 Solicitando: ${url}`);
+    // Construcción de la URL
+    let url = `listar/${tipoDoc}/${unidadLimpia}`;
+    if (nav.length > 0) url += `/${nav.join('/')}`;
 
-    this.dataService.get<any>(url, params).subscribe({
+    this.dataService.get<any>(url, { page: '0', size: '100' }).subscribe({
       next: (res) => {
-        this.totalElementos.set(res.totalItems || 0);
         const items = res.items || [];
         
-        // El backend responde con los objetos {nombre, esDirectorio, ...}
-        this.carpetas.set(items.filter((i: any) => i.esDirectorio).map((i: any) => i.nombre));
-        // 2. 🔥 FILTRO DE PDF: Solo archivos que terminen en .pdf
-        
-        const soloPdfs = items.filter((i: any) => 
-          !i.esDirectorio && i.nombre.toLowerCase().endsWith('.pdf')
-        );
-        
-        this.archivos.set(soloPdfs);
-        this.totalElementos.set(res.totalItems || 0);
+        const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD-'));
+        const otrosArchivos = items.filter((i: any) => !i.esDirectorio && i.nombre.toLowerCase().endsWith('.pdf'));
+
+        if (carpetasProceso.length > 0 && nav.length === 0) {
+          const filasProcesadas: any[] = carpetasProceso.map((c: any) => ({
+            nombre: c.nombre,
+            esDirectorio: true,
+            observacion: c.observacion,
+            cargandoDetalle: true
+          }));
+
+          this.archivos.set(filasProcesadas);
+          this.carpetas.set([]);
+
+          // Pasamos las variables que recibimos por parámetro
+          filasProcesadas.forEach(fila => this.buscarArchivosHijos(fila, unidadLimpia, tipoDoc));
+        } else {
+          this.carpetas.set(items.filter((i: any) => i.esDirectorio).map((i: any) => i.nombre));
+          this.archivos.set(otrosArchivos);
+        }
         this.cargando.set(false);
       },
-      error: (err) => {
-        console.error('❌ Error:', err);
-        this.cargando.set(false);
-      }
+      error: () => this.cargando.set(false)
     });
   }
 
+  cargarVistaMulticarpetaImprenta() {
+    console.log('Cargando vista multicarpeta para Imprenta...');
+    const rutasInteres = [
+      { tipo: 'cobranza', unidad: 'tesoreria' },
+      { tipo: 'notificacion', unidad: '1juzgado' },
+      { tipo: 'notificacion', unidad: '2juzgado' }
+    ];
+
+    const peticiones = rutasInteres.map(r => 
+      this.dataService.get<any>(`listar/${r.tipo}/${r.unidad}`, { page: '0', size: '100' })
+    );
+
+    forkJoin(peticiones).subscribe({
+      next: (resultados) => {
+        let todasLasFilas: any[] = [];
+
+        resultados.forEach((res, index) => {
+          const config = rutasInteres[index];
+          const items = res.items || [];
+          
+          const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD-'));
+
+          const filas = carpetasProceso.map((c: any) => ({
+            nombre: c.nombre,
+            esDirectorio: true,
+            observacion: c.observacion || `Origen: ${config.unidad}`,
+            unidadOrigen: config.unidad,
+            tipoOrigen: config.tipo,
+            cargandoDetalle: true
+          }));
+          
+          todasLasFilas = [...todasLasFilas, ...filas];
+        });
+
+        this.archivos.set(todasLasFilas);
+        this.carpetas.set([]);
+        this.cargando.set(false);
+
+        todasLasFilas.forEach(fila => {
+          this.buscarArchivosHijos(fila, fila.unidadOrigen, fila.tipoOrigen);
+        });
+      },
+      error: () => this.cargando.set(false)
+    });
+  }
+
+private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) {
+  const baseLog = `📂 Proceso [${fila.nombre}]:`;
+
+  // 1. Log para Reportes
+  const urlReportes = `listar/${tipoDoc}/${unidad}/${fila.nombre}/REPORTES`;
+  console.log(`${baseLog} Buscando Reporte en -> ${urlReportes}`);
+  this.dataService.get<any>(urlReportes, {}).subscribe(res => {
+    const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
+    if (pdf) {
+      fila.pdfReporte = pdf.nombre;
+      console.log(`${baseLog} ✅ Reporte encontrado: ${pdf.nombre}`);
+    }
+  });
+
+  // 2. Log para Consolidados
+  const urlConsolidados = `listar/${tipoDoc}/${unidad}/${fila.nombre}/CARTAS_CONSOLIDADAS`;
+  console.log(`${baseLog} Buscando Consolidado en -> ${urlConsolidados}`);
+  this.dataService.get<any>(urlConsolidados, {}).subscribe(res => {
+    const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
+    if (pdf) {
+      fila.pdfConsolidado = pdf.nombre;
+      console.log(`${baseLog} ✅ Consolidado encontrado: ${pdf.nombre}`);
+    }
+  });
+
+  // 3. Log para Excel (Upload)
+  const urlUpload = `listar/upload/${tipoDoc}/${unidad}/${fila.nombre}`;
+  console.log(`${baseLog} Buscando Excel Original en -> ${urlUpload}`);
+  this.dataService.get<any>(urlUpload, {}).subscribe(res => {
+    const excel = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.xlsx'));
+    if (excel) {
+      fila.excelOriginal = excel.nombre;
+      console.log(`${baseLog} ✅ Excel encontrado: ${excel.nombre}`);
+    }
+    fila.cargandoDetalle = false;
+  });
+}
+
   navegarACarpeta(nombreCarpeta: string) {
-  // Al entrar a una subcarpeta, reiniciamos a la página 0 y limpiamos filtro si lo deseas
-    this.paginaActual.set(0);
-    this.filtroNombre.set(''); 
-    
+    // Si el nombre empieza con CD-, ya estamos mostrando sus archivos hijos 
+    // mediante buscarArchivosHijos, por lo tanto anulamos la navegación profunda.
+    if (nombreCarpeta.startsWith('CD-')) {
+      console.log('Navegación anulada: Ya se muestran los archivos para', nombreCarpeta);
+      return;
+    }
+
     this.rutaNavegacion.update(path => [...path, nombreCarpeta]);
     this.cargarNivel();
   }
@@ -173,44 +335,61 @@ export class RegistrosComponent implements OnInit {
   }
 
   obtenerUnidadLimpia(): string {
+    console.log('Obteniendo unidad limpia desde localStorage...', localStorage.getItem('codigo_unidad'));
     return (localStorage.getItem('codigo_unidad') || 'tesoreria').replace('imsb_', '');
   }
 
-  descargar(nombreArchivo: string) {
-  // 1. Obtener la unidad igual que en cargarNivel
-    const unidadRaw = localStorage.getItem('codigo_unidad') || 'tesoreria';
-    const unidadLimpia = unidadRaw.replace('imsb_', '');
+  descargar(nombreArchivo: string): void {
+    const unidad = this.obtenerUnidadLimpia();
+    const tipoDoc = this.tipoDocumento();
+    const nav = this.rutaNavegacion();
     
-    const tipoDoc = this.tipoDocumento(); // 'cobranza'
-    const nav = this.rutaNavegacion();    // ['CD-FTX...', 'REPORTES']
-
-    /**
-     * 2. CONSTRUCCIÓN DE LA URL DINÁMICA
-     * Formato: download/cobranza/tesoreria/CD-FTX.../REPORTES/archivo.pdf
-     */
-    let pathFinal = `${tipoDoc}/${unidadLimpia}`;
-    
+    let path = `${tipoDoc}/${unidad}`;
     if (nav.length > 0) {
-      pathFinal += `/${nav.join('/')}`;
+      path += `/${nav.join('/')}`;
     }
     
-    const urlDownload = `${pathFinal}/${nombreArchivo}`;
+    const urlDownload = `${path}/${nombreArchivo}`;
+    this.ejecutarDescarga(urlDownload, nombreArchivo);
+  }
 
-    console.log(`📥 Descargando desde: ${urlDownload}`);
+  // Método para descargas desde la fila consolidada (Botones de colores)
+  descargarEspecial(nombreCarpeta: string, subTipo: string, archivo: string): void {
+    const unidad = this.obtenerUnidadLimpia();
+    const tipoDoc = this.tipoDocumento();
+    
+    // Construimos la ruta SIN el prefijo "download/" al inicio
+    let pathFinal = '';
+    
+    if (subTipo === 'upload') {
+      // Resultado esperado: upload/cobranza/tesoreria/CD_123/archivo.xlsx
+      pathFinal = `upload/${tipoDoc}/${unidad}/${nombreCarpeta}/${archivo}`;
+    } else {
+      // Resultado esperado: cobranza/tesoreria/CD_123/REPORTES/archivo.pdf
+      pathFinal = `${tipoDoc}/${unidad}/${nombreCarpeta}/${subTipo}/${archivo}`;
+    }
 
-    this.dataService.descargarArchivo(urlDownload).subscribe({
+    // LOG DE DIAGNÓSTICO
+    console.log("--- DEBUG DESCARGA ---");
+    console.log("1. Carpeta:", nombreCarpeta);
+    console.log("2. Subtipo:", subTipo);
+    console.log("3. Path construido:", pathFinal);
+    console.log("----------------------");
+
+    // Si tu método ejecutarDescarga ya pone el "download/", pásale solo el pathFinal
+    this.ejecutarDescarga(`${pathFinal}`, archivo);
+  }
+
+  private ejecutarDescarga(url: string, nombre: string): void {
+    this.dataService.descargarArchivo(url).subscribe({
       next: (blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = nombreArchivo;
-        a.click();
-        window.URL.revokeObjectURL(url);
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = nombre;
+        link.click();
+        window.URL.revokeObjectURL(link.href);
       },
-      error: (err) => {
-        console.error('❌ Error en la descarga:', err);
-        // Aquí podrías añadir un snackbar o alerta de "Archivo no encontrado"
-      }
+      error: (err) => console.error('Error al descargar:', err)
     });
   }
 

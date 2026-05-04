@@ -52,3 +52,5 @@ export interface RespuestaListar {
   carpetas: string[];
   archivos: ArchivoDetalle[];
 }
+
+// En tu modelo o interfaz

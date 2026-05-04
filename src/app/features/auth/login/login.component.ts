@@ -62,7 +62,10 @@ export class LoginComponent {
           console.log('Usuario:', user.nombre);
           console.log('Menus:', user.menus);
           console.groupEnd();
-
+          console.log(user.unidadNegocio.codigoUnidad); // Verificar que el código de unidad se esté guardando correctamente
+          localStorage.setItem('codigo_unidad', user.unidadNegocio.codigoUnidad);
+          //localStorage.setItem('codigo_unidad', user.unidad || 'imsb_imprenta');
+          
           // 3. Redirección dinámica basada en el primer menú
           if (user.menus && user.menus.length > 0) {
             this.router.navigate([user.menus[0].value2]);

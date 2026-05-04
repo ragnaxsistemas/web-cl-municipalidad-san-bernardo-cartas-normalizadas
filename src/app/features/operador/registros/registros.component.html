@@ -4,56 +4,80 @@
     <span class="breadcrumb">
       {{ tipoDocumento() | uppercase }} / 
       <strong>{{ obtenerUnidadLimpia() | uppercase }}</strong>
-      <span *ngIf="rutaNavegacion().length > 0"> / {{ rutaNavegacion().join(' / ') }}</span>
+      <!-- Angular 18 Control Flow -->
+      @if (rutaNavegacion().length > 0) {
+        <span> / {{ rutaNavegacion().join(' / ') }}</span>
+      }
     </span>
   </div>
 
   <div class="header-actions">
-    <button mat-flat-button color="primary" 
-            (click)="volverAtras()" 
-            [disabled]="rutaNavegacion().length === 0" 
-            class="btn-volver">
-      <mat-icon>arrow_back</mat-icon> Volver
-    </button>
+    <!-- Usamos la señal mostrarSelectorUnidad que definimos en el TS -->
+    @if (mostrarSelectorUnidad()) {
+      <div class="selector-unidad-container">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Seleccione Unidad de Trabajo</mat-label>
+          <select matNativeControl (change)="onSeleccionUnidad($event)">
+            <option value="" disabled selected>-- Seleccionar Unidad --</option>
+            @for (u of unidadesCombo(); track u.codigoUnidad) {
+              <option [value]="u.codigoUnidad">
+                {{ u.showNombreUnidad }}
+              </option>
+            }
+          </select>
+        </mat-form-field>
+      </div>
+    }
 
-    <mat-form-field appearance="outline" class="search-field">
-      <mat-label>Buscar en este nivel...</mat-label>
-      <input matInput 
-             [ngModel]="filtroNombre()" 
-             (ngModelChange)="onBuscar($event)"
-             placeholder="Ej: CD-FTX...">
-      <mat-icon matSuffix>search</mat-icon>
-    </mat-form-field>
+    <!-- Indicador de navegación actual usando la señal unidadSeleccionada -->
+    @if (unidadSeleccionada()) {
+      <div class="breadcrumb-navegacion">
+        <span>
+          📍 Viendo registros de: 
+          <b>{{ unidadSeleccionada()?.tipoNavegacion?.toUpperCase() }}</b>
+        </span>
+      </div>
+    }
   </div>
 
   <div class="table-container mat-elevation-z8">
-    <div class="loading-shade" *ngIf="cargando()">
-      <mat-spinner strokeWidth="3" diameter="50"></mat-spinner>
-    </div>
+    <!-- ✅ Sintaxis correcta en Angular 18 -->
+    @if (cargando()) {
+      <div class="loading-shade">
+        <mat-spinner strokeWidth="3" diameter="50"></mat-spinner>
+      </div>
+    }
 
+    <!-- Importante: dataSource() se llama como función por ser Signal -->
     <table mat-table [dataSource]="dataSource()">
       
       <ng-container matColumnDef="icono">
         <th mat-header-cell *matHeaderCellDef width="50"></th>
         <td mat-cell *matCellDef="let element">
-          <mat-icon class="folder-icon" *ngIf="element.esDirectorio">folder</mat-icon>
-          <mat-icon class="file-icon" *ngIf="!element.esDirectorio">description</mat-icon>
+          @if (element.esDirectorio) {
+            <mat-icon class="folder-icon">folder</mat-icon>
+          } @else {
+            <mat-icon class="file-icon">description</mat-icon>
+          }
         </td>
       </ng-container>
 
       <ng-container matColumnDef="nombre">
-        <th mat-header-cell *matHeaderCellDef> Nombre / Proceso </th>
-        <td mat-cell *matCellDef="let element"> 
-          <span class="link-carpeta" *ngIf="element.esDirectorio" (click)="navegarACarpeta(element.nombre)">
-            {{ element.nombre }}
-          </span>
-          <div *ngIf="!element.esDirectorio" class="file-info">
-            <span class="file-name">{{ element.nombre }}</span>
-            <small class="file-meta" *ngIf="element.usuario">Subido por: {{ element.usuario }}</small>
+        <th mat-header-cell *matHeaderCellDef> Proceso </th>
+        <td mat-cell *matCellDef="let element">
+          <div class="proceso-container">
+            @if (element.nombre.startsWith('CD-')) {
+              <span class="texto-proceso-fijo"><strong>{{ element.nombre }}</strong></span>
+            } @else {
+              <span class="link-carpeta" (click)="navegarACarpeta(element.nombre)">
+                {{ element.nombre }}
+              </span>
+            }
           </div>
         </td>
       </ng-container>
 
+      <!-- Columna Observación (Asegúrate de agregarla a displayedColumns en el TS si no estaba) -->
       <ng-container matColumnDef="observacion">
         <th mat-header-cell *matHeaderCellDef> Observación </th>
         <td mat-cell *matCellDef="let element">
@@ -62,15 +86,52 @@
       </ng-container>
 
       <ng-container matColumnDef="acciones">
-        <th mat-header-cell *matHeaderCellDef width="100"> Acciones </th>
+        <th mat-header-cell *matHeaderCellDef> Descargar </th>
         <td mat-cell *matCellDef="let element">
-          <button mat-icon-button color="primary" 
-                  *ngIf="!element.esDirectorio" 
-                  (click)="descargar(element.nombre)" 
-                  matTooltip="Descargar">
-            <mat-icon>download</mat-icon>
-          </button>
-          <mat-icon class="icon-neutro" *ngIf="element.esDirectorio">chevron_right</mat-icon>
+          
+          @if (element.esDirectorio && element.nombre.startsWith('CD-')) {
+            <div class="group-actions">
+              
+              <!-- Mostramos Excel y Reporte solo si NO es imprenta -->
+              @if (obtenerUnidadLimpia() !== 'imprenta') {
+                @if (element.excelOriginal) {
+                  <button mat-icon-button color="accent" 
+                          (click)="descargarEspecial(element.nombre, 'upload', element.excelOriginal)"
+                          matTooltip="Excel Original">
+                    <mat-icon>grid_on</mat-icon>
+                  </button>
+                }
+
+                @if (element.pdfReporte) {
+                  <button mat-icon-button color="primary" 
+                          (click)="descargarEspecial(element.nombre, 'REPORTES', element.pdfReporte)"
+                          matTooltip="Ver Reporte PDF">
+                    <mat-icon>picture_as_pdf</mat-icon>
+                  </button>
+                }
+              }
+
+              <!-- El Consolidado se muestra para TODOS (incluyendo imprenta) -->
+              @if (element.pdfConsolidado) {
+                <button mat-icon-button style="color: #2e7d32;" 
+                        (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
+                        matTooltip="Cartas Consolidadas">
+                  <mat-icon>picture_as_pdf</mat-icon>
+                </button>
+              }
+              
+              @if (element.cargandoDetalle) {
+                <mat-spinner diameter="20"></mat-spinner>
+              }
+            </div>
+          }
+
+          <!-- Botón de descarga genérico para archivos sueltos -->
+          @if (!element.esDirectorio) {
+            <button mat-icon-button color="primary" (click)="descargar(element.nombre)">
+              <mat-icon>download</mat-icon>
+            </button>
+          }
         </td>
       </ng-container>
 

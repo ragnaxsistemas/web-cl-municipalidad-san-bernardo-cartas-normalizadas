@@ -26,6 +26,15 @@ export const routes: Routes = [
         data: { tipo: 'notificacion', titulo: 'Registros de Notificaciones' } 
       },
 
+      // 🚩 NUEVA RUTA PARA IMPRENTA 
+      { 
+        path: 'registro/imprenta', 
+        component: RegistrosComponent, 
+        data: { 
+          tipo: 'imprenta', // Esto ayudará a tu lógica interna
+          titulo: 'Panel de Control - Imprenta' 
+        } 
+      },
       // --- ADJUNTAR (CARGA DE EXCEL/PDF) ---
       // Asegúrate de que estos "path" coincidan con lo que viene en el JWT (menu.value2)
       { 

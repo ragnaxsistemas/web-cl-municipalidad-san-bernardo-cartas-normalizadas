@@ -137,3 +137,28 @@ td.mat-column-nombre {
     color: #333;
   }
 }
+
+.group-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px; // Espaciado entre iconos de descarga
+}
+
+.breadcrumb {
+  display: block;
+  margin-bottom: 25px; // El margen que pediste anteriormente
+  font-size: 0.9rem;
+  color: #666;
+  strong {
+    color: #1976d2; // Color para destacar la unidad
+  }
+}
+
+.link-carpeta {
+  cursor: pointer;
+  color: #1976d2;
+  font-weight: 500;
+  &:hover {
+    text-decoration: underline;
+  }
+}

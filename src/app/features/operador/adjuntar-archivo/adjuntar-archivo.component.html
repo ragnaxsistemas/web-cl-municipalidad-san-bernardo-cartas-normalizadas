@@ -8,14 +8,8 @@
         
         <p *ngIf="!archivoSeleccionado()">Seleccione un archivo en formato Excel</p>
         <p *ngIf="archivoSeleccionado()" class="file-name">
-          <strong>Archivo listo:</strong> {{ archivoSeleccionado()?.name }}
+          <strong>Archivo:</strong> {{ archivoSeleccionado()?.name }}
         </p>
-
-        <input type="file" 
-       #fileInput 
-       (change)="onFileSelected($event)" 
-       accept=".xlsx" 
-       style="display: none">
         
         <div class="upload-form">
   <input type="file" 
@@ -99,18 +93,19 @@
       </ng-container>
 
       <ng-container matColumnDef="acciones">
-  <th mat-header-cell *matHeaderCellDef> Descargas </th>
+  <th mat-header-cell *matHeaderCellDef> Acciones </th>
+  
   <td mat-cell *matCellDef="let element">
-    
-    <button mat-icon-button 
-        color="primary" 
-        [disabled]="!element.nombreExcel"
-        (click)="descargarExcel(element)"
-        [matTooltip]="element.nombreExcel ? 'Archivo Adjuntado: ' + element.nombreExcel : 'Sin archivo'">
-      <mat-icon>grid_on</mat-icon>
-    </button>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      
+      <button mat-icon-button *ngIf="element.nombreExcel" 
+              (click)="descargarExcel(element)"
+               [matTooltip]="element.nombreExcel ? 'Archivo Adjuntado: ' + element.nombreExcel : 'Sin archivo'" 
+              matTooltip="Descargar Original">
+        <mat-icon>grid_on</mat-icon>
+      </button>
 
-    <button mat-icon-button 
+      <button mat-icon-button 
             color="accent" 
             [disabled]="!element.nombreCsv"
             (click)="descargarCsv(element)"
@@ -118,8 +113,17 @@
       <mat-icon>description</mat-icon>
     </button>
 
+      <mat-icon *ngIf="!element.nombreCsv" 
+                matTooltip="El servidor aún está procesando los datos..." 
+                style="color: #999; font-size: 20px;">
+        
+      </mat-icon>
+
+    </div>
   </td>
 </ng-container>
+
+      
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
       <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
@@ -128,18 +132,21 @@
 </div>
 
 <ng-template #loadingDialog>
-  <div class="loading-container">
-    <mat-dialog-content>
-      <div class="spinner-wrapper">
-        <mat-progress-spinner 
-          mode="indeterminate" 
-          diameter="50" 
-          color="primary">
-        </mat-progress-spinner>
+  <div class="loading-container" style="min-width: 300px; padding: 10px;">
+    <div style="display: flex; justify-content: flex-end;">
+      <button mat-icon-button mat-dialog-close title="Seguir trabajando en segundo plano">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+
+    <mat-dialog-content style="margin-top: -20px;">
+      <div class="spinner-wrapper" style="display: flex; align-items: center; gap: 15px;">
+        
         <div class="loading-text">
-          <h3>Subiendo archivo...</h3>
-          <p>Por favor, no cierre la ventana. Estamos procesando los datos
-             para ser enviados a Normalización.</p>
+          <h3 style="margin: 0; font-size: 16px;">Subiendo archivo...</h3>
+          <p style="margin: 5px 0 0; font-size: 12px; color: #666;">
+            Procesando datos para Normalización.
+          </p>
         </div>
       </div>
     </mat-dialog-content>

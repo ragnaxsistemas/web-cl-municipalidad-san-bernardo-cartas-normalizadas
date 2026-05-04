@@ -10,7 +10,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
@@ -53,6 +53,8 @@ export class AdjuntarComponent implements OnInit {
   // Tabla de resultados de éxito
   resultados = signal<any[]>([]);
   displayedColumns: string[] = ['tipo', 'unidad', 'nombre', 'creacion', 'observacion', 'acciones'];
+
+  loadingRef?: MatDialogRef<any>;
 
   puedeSubir = computed(() => {
     return this.archivoSeleccionado() !== null && 
@@ -107,54 +109,53 @@ export class AdjuntarComponent implements OnInit {
     console.log(`🚀 Iniciando upload IMSB: Unidad=${unidadLimpia}, Tipo Detectado=${tipoActual}`);
 
     if (this.puedeSubir() && user) {
-    
-    // Abrimos el modal de carga DESDE EL HTML
-    const dialogRef = this.dialog.open(this.loadingDialogTpl, {
-      disableClose: true,
-      width: '350px',
-      panelClass: 'custom-loader'
-    });
+      // 1. Usamos el método que abre el modal no-bloqueante en la esquina
+      this.abrirCargaArchivos();
+      this.cargando.set(true);
 
       const formData = new FormData();
       formData.append('archivo', file!);
       formData.append('user', user.sub);
       formData.append('observacion', texto);
 
-      // 3. Construir el endpoint con el prefijo /upload/ requerido por el Backend
       const endpoint = `upload/${tipoActual}/${unidadLimpia}`;
 
       this.dataService.post<any>(endpoint, formData).subscribe({
         next: (res: any) => {
-          // 3. Cerramos el modal solo cuando hay éxito
-          dialogRef.close();
-          this.snackBar.open('Archivo procesado y enviado a Normalización exitosamente.', 'Cerrar', { duration: 3000 });
-          console.log('✅ Upload exitoso:', res);
+          // 2. Cerramos el modal inmediatamente (el servidor ya tiene el archivo)
+          this.finalizarProceso();
           
-          // 🚩 EL PUNTO CLAVE: Forzamos la recarga aquí
-          console.log('[Procesar] 🔄 Ejecutando refresco de tabla...');
-          this.cargarUltimosCinco();
-          /***this.resultados.set([{
-            tipo: tipoActual,
-            unidad: unidadLimpia,
-            carpeta: res.carpeta || 'Enviado a Correos de Chile',
-            nombre: res.nombre, 
-            observacion: res.observacion,
-            creacion: res.fechaCreacion || new Date().toISOString()
-          }]);***/
+          this.snackBar.open(
+            'Archivo recibido. Se está procesando en segundo plano.', 
+            'Entendido', 
+            { duration: 5000 }
+          );
 
+          // 3. Limpiamos el formulario
           this.headerTexto.set(''); 
           this.archivoSeleccionado.set(null);
+
+          // Esto limpia el valor del input para que permita seleccionar el mismo archivo de nuevo
+            if (this.fileInput && this.fileInput.nativeElement) {
+              this.fileInput.nativeElement.value = ''; 
+            }
           this.cargando.set(false);
+          
+          // 4. Refresco "inteligente": Esperamos 3 segundos para que el proceso
+          // asíncrono del backend alcance a crear la carpeta y el registro inicial.
+          setTimeout(() => {
+            this.cargarUltimosCinco();
+          }, 3000);
         },
         error: (err) => {
+          this.finalizarProceso();
           this.cargando.set(false);
-          console.error('❌ Error en el servidor:', err);
-          // El error de CORS debería desaparecer al usar la ruta /upload/...
-          alert('Error al procesar: ' + (err.error?.message || 'Fallo en la comunicación con el servidor'));
+          console.error('❌ Error:', err);
+          alert('Error al subir: ' + (err.error?.message || 'Fallo en la comunicación'));
         }
       });
     } else {
-      alert('Faltan datos requeridos (Archivo, Observación o Sesión de Usuario)');
+      alert('Faltan datos requeridos');
     }
   }
 
@@ -214,6 +215,24 @@ cargarUltimosCinco() {
   });
 }
 
+abrirCargaArchivos() {
+  // Cambio de loadingDialog a loadingDialogTpl
+  this.loadingRef = this.dialog.open(this.loadingDialogTpl, {
+    width: '350px',
+    hasBackdrop: false,           
+    disableClose: false,          
+    closeOnNavigation: false,     
+    position: { bottom: '20px', right: '20px' }, 
+    panelClass: 'upload-dialog-flotante'
+  });
+}
+// Cuando termine tu proceso de subida/normalización:
+finalizarProceso() {
+  if (this.loadingRef) {
+    this.loadingRef.close();
+    this.snackBar.open('Archivo procesado con éxito', 'OK', { duration: 3000 });
+  }
+}
   // Función auxiliar para parsear el nombre de la carpeta (ej: 2026_04_25_23_00_00)
   extraerFechaDeNombre(nombre: string): Date | null {
   try {
