@@ -56,7 +56,7 @@ export class DataService {
    * Ejecuta un POST estándar a los microservicios de proceso (Normalizar/Ejecutar)
    */
   private ejecutarPost(accion: string, tipo: string, payload: any): Observable<any> {
-    const url = `http://localhost:9999/${accion}-archivo-${tipo}`;
+    const url = `${this.API_URL}/${accion}-archivo-${tipo}`;
     console.log(`🚀 Ejecutando ${accion} en:`, url, payload);
     return this.http.post(url, payload);
   }
@@ -91,7 +91,7 @@ export class DataService {
    * Gatilla la generación de PDFs (iText)
    */
   procesarGeneracionCartas(payload: any): Observable<any> {
-  const url = `http://localhost:9999/procesar/execute-archivo-cobranza`;
+  const url = `${this.API_URL}/procesar/execute-archivo-cobranza`;
   return this.http.post(url, payload);
 }
 
