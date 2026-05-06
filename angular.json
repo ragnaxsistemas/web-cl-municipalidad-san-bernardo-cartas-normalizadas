@@ -17,6 +17,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:application",
           "options": {
+            "baseHref": "/sanbernardo/",
             "outputPath": "dist/web-cl-municipalidad-san-bernardo-cartas-normalizadas",
             "index": "src/index.html",
             "browser": "src/main.ts",
@@ -69,6 +70,10 @@
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
+          "options": {
+            // ELIMINA baseHref de aquí
+            "servePath": "/sanbernardo/" 
+          },
           "configurations": {
             "production": {
               "buildTarget": "web-cl-municipalidad-san-bernardo-cartas-normalizadas:build:production"

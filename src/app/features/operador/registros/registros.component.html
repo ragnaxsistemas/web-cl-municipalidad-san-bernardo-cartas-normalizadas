@@ -120,6 +120,22 @@
                 </button>
               }
               
+              <!-- Botón Habilitar (Nuevo) -->
+              @if (['tesoreria', '1juzgado', '2juzgado'].includes(obtenerUnidadLimpia())) {
+                <button mat-flat-button 
+                        [color]="element.activarConsolidadoImprenta ? '' : 'primary'"
+                        [style.background-color]="element.activarConsolidadoImprenta ? '#e0e0e0' : null"
+                        [style.color]="element.activarConsolidadoImprenta ? '#9e9e9e' : null"
+                        (click)="habilitarParaImprenta(element)"
+                        style="margin-right: 8px; scale: 0.8;"
+                        [disabled]="element.cargandoHabilitar || element.activarConsolidadoImprenta">
+                  
+                  <mat-icon>{{ element.activarConsolidadoImprenta ? 'lock' : 'check_circle' }}</mat-icon>
+                  
+                  {{ element.activarConsolidadoImprenta ? 'Habilitada' : 'Habilitar' }}
+                </button>
+              }
+
               @if (element.cargandoDetalle) {
                 <mat-spinner diameter="20"></mat-spinner>
               }

@@ -1,6 +1,6 @@
- import { Component, inject, signal, OnInit, computed } from '@angular/core'; // 🚩 ESTO ES CORE
-import { ActivatedRoute } from '@angular/router'; // 🚩 ESTO ES ROUTER
-import { Component as NgComponent } from '@angular/core'; // Ajuste de import si es necesario
+import { Component, inject, signal, OnInit, computed } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { Component as NgComponent } from '@angular/core';
 import { AuthService } from '@core/services/auth.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -10,19 +10,28 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { DataService } from '@core/services/data.service';
-import { ArchivoDetalle, RespuestaListar } from '@core/models/auth.model'; // Importamos el modelo de respuesta
+import { ArchivoDetalle, RespuestaListar } from '@core/models/auth.model';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator'; 
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable, forkJoin, of } from 'rxjs';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 export interface FilaProceso {
-  nombre: string;         // El nombre de la carpeta CD-FTX...
-  esDirectorio: true;
-  pdfReporte?: string;    // Nombre del archivo PDF en /REPORTES
-  pdfConsolidado?: string; // Nombre del archivo PDF en /CARTAS_CONSOLIDADAS
-  excelOriginal?: string; // Nombre del archivo XLSX en /upload/...
+  nombre: string;
+  esDirectorio: boolean; // Cambiado a boolean para mayor flexibilidad
+  pdfReporte?: string;
+  pdfConsolidado?: string;
+  excelOriginal?: string;
   cargandoDetalle?: boolean;
+  observacion?: string;
+  usuario?: string;
+  // --- CAMPOS PARA HABILITAR IMPRENTA ---
+  activarConsolidadoImprenta?: boolean; 
+  cargandoHabilitar?: boolean;
+  unidadOrigen?: string;
+  tipoOrigen?: string;
 }
 
 @NgComponent({
@@ -32,9 +41,12 @@ export interface FilaProceso {
     CommonModule, FormsModule, MatTableModule, 
     MatInputModule, MatFormFieldModule, MatButtonModule, 
     MatIconModule,
-    MatPaginatorModule, // 🚩 INDISPENSABLE PARA [pageSizeOptions]
-    MatProgressSpinnerModule, // Para el cargando()
-    MatTooltipModule
+    MatPaginatorModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule,
+    MatSnackBarModule,
+    MatDialogModule,
+    MatSnackBarModule
   ],
   templateUrl: './registros.component.html',
   styleUrls: ['./registros.component.scss']
@@ -43,8 +55,8 @@ export class RegistrosComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private dataService = inject(DataService);
   private authService = inject(AuthService);
+  private snackBar = inject(MatSnackBar);
 
-  // Signals de estado
   tituloPagina = signal('Consultas y Reportes');
   tipoDocumento = signal(''); 
   carpetas = signal<string[]>([]);
@@ -52,13 +64,10 @@ export class RegistrosComponent implements OnInit {
   filtroNombre = signal(''); 
   displayedColumns: string[] = ['icono', 'nombre', 'acciones'];
   
-  // La rutaActual ahora solo guardará las subcarpetas después de la base
-  // Ejemplo: ['2026_04_03', 'lote_01']
   rutaNavegacion = signal<string[]>([]);
-// Signals para el Selector de Unidades
   unidadesCombo = signal<any[]>([]);
   unidadSeleccionada = signal<any | null>(null);
-  mostrarSelectorUnidad = signal(false); // Para mostrar/ocultar el combo en el HTML
+  mostrarSelectorUnidad = signal(false);
 
   totalElementos = signal(0);
   pageSize = signal(10);
@@ -66,12 +75,12 @@ export class RegistrosComponent implements OnInit {
   cargando = signal(false);
 
   dataSource = computed(() => {
-  // Convertimos las carpetas (strings) a objetos compatibles con la tabla
     const carpetasObj = this.carpetas().map(nombre => ({
       nombre: nombre,
       esDirectorio: true,
       observacion: '',
-      usuario: ''
+      usuario: '',
+      activarConsolidadoImprenta: false
     }));
 
     const combined = [...carpetasObj, ...this.archivos()];
@@ -84,13 +93,8 @@ export class RegistrosComponent implements OnInit {
     );
   });
 
-  esCarpeta(item: any): boolean {
-    return typeof item === 'string';
-  }
-
   ngOnInit() {
     this.route.data.subscribe(data => {
-      // Capturamos el tipo desde la ruta definida arriba
       const tipoRuta = data['tipo']; 
       this.tipoDocumento.set(tipoRuta);
       this.tituloPagina.set(data['titulo'] || 'Consultas');
@@ -101,7 +105,6 @@ export class RegistrosComponent implements OnInit {
       const unidadOriginal = localStorage.getItem('codigo_unidad') || '';
       const unidadLimpia = unidadOriginal.replace('imsb_', '');
 
-      // 🚩 CORRECCIÓN: Si la ruta es de imprenta O el usuario es imprenta/admin
       if (tipoRuta === 'imprenta' || unidadLimpia === 'imprenta' || unidadLimpia === 'admin') {
         this.mostrarSelectorUnidad.set(true);
         this.cargarUnidadesHabilitadas(unidadLimpia);
@@ -112,20 +115,14 @@ export class RegistrosComponent implements OnInit {
     });
   }
 
-  /**Para administracion e imprenta */
   cargarUnidadesHabilitadas(unidadLimpia: string) {
-    // Obtenemos 'imsb_reportes' desde el AuthService
     const codEmpresa = this.authService.obtenerCodEmpresa() || 'imsb_reportes'; 
-    
     this.dataService.get<any[]>(`carpetas-habilitadas/unidad/${codEmpresa}`).subscribe({
       next: (unidades) => {
-        // Formateamos las unidades para que el 'codigoUnidad' no tenga el prefijo 'imsb_'
-        // Esto es vital para que ejecutarCargaEstandar use la ruta correcta (ej: /listar/cobranza/tesoreria)
         const unidadesFormateadas = unidades.map(u => ({
           ...u,
           codigoUnidadLimpia: u.codigoUnidad.replace('imsb_', '')
         }));
-        
         this.unidadesCombo.set(unidadesFormateadas);
       },
       error: (err) => console.error("Error cargando unidades", err)
@@ -135,86 +132,60 @@ export class RegistrosComponent implements OnInit {
   onSeleccionUnidad(event: Event) {
     const codUnidad = (event.target as HTMLSelectElement).value;
     const unidad = this.unidadesCombo().find(u => u.codigoUnidad === codUnidad);
-    
     if (unidad) {
-      // Determinamos el tipo de navegación por el nombre mostrado (showNombreUnidad)
       const nombreLower = unidad.showNombreUnidad.toLowerCase();
       let tipoNavegacion = "cobranza"; 
-      
-      if (nombreLower.includes("juzgado")) {
-        tipoNavegacion = "notificacion";
-      }
+      if (nombreLower.includes("juzgado")) tipoNavegacion = "notificacion";
 
       const unidadLimpia = unidad.codigoUnidad.replace('imsb_', '');
-
-      this.unidadSeleccionada.set({
-        ...unidad,
-        tipoNavegacion: tipoNavegacion,
-        codigoUnidadLimpia: unidadLimpia
-      });
-
-      // Actualizamos estados y disparamos carga
+      this.unidadSeleccionada.set({ ...unidad, tipoNavegacion: tipoNavegacion, codigoUnidadLimpia: unidadLimpia });
       this.tipoDocumento.set(tipoNavegacion);
-      this.rutaNavegacion.set([]); // Reset de carpetas al cambiar unidad
-      
+      this.rutaNavegacion.set([]); 
       this.ejecutarCargaEstandar(unidadLimpia, tipoNavegacion, []);
     }
   }
-  /**
-   * 🚩 CAMBIO PRINCIPAL: Adaptación al DataService refactorizado
-   */
+
   cargarNivel() {
     this.cargando.set(true);
     const unidadOriginal = localStorage.getItem('codigo_unidad') || 'tesoreria';
     const unidadLimpia = unidadOriginal.replace('imsb_', '');
-    const nav = this.rutaNavegacion(); // Signal con el array de navegación
-    const tipoDoc = this.tipoDocumento(); // Signal con 'cobranza' o 'notificacion'
+    const nav = this.rutaNavegacion();
+    const tipoDoc = this.tipoDocumento();
 
-    // Lógica para IMPRENTA
     if (unidadLimpia === 'imprenta') {
         if (nav.length === 0) {
-            // Si está en la raíz, ve TODO (multicarpeta)
             this.cargarVistaMulticarpetaImprenta();
         } else {
-            // Si ya entró a una carpeta (ej: CD-100), debemos saber a qué unidad pertenece
-            // Aquí hay un truco: si el usuario es imprenta, el primer nivel de nav[0] 
-            // debería ayudarnos a identificar si viene de tesoreria o juzgado.
-            // Si no guardas el origen, podrías usar la carga estándar con una unidad base.
             this.ejecutarCargaEstandar(unidadLimpia, tipoDoc, nav);
         }
     } else {
-        // Lógica para unidades NORMALES (tesoreria, 1juzgado, etc)
         this.ejecutarCargaEstandar(unidadLimpia, tipoDoc, nav);
     }
 }
 
-// CORRECCIÓN: Los parámetros son (nombre: tipo), no (this.metodo())
   ejecutarCargaEstandar(unidadLimpia: string, tipoDoc: string, nav: string[]) { 
     this.cargando.set(true);
-
-    // Construcción de la URL
     let url = `listar/${tipoDoc}/${unidadLimpia}`;
     if (nav.length > 0) url += `/${nav.join('/')}`;
 
     this.dataService.get<any>(url, { page: '0', size: '100' }).subscribe({
       next: (res) => {
         const items = res.items || [];
-        
         const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD-'));
         const otrosArchivos = items.filter((i: any) => !i.esDirectorio && i.nombre.toLowerCase().endsWith('.pdf'));
 
         if (carpetasProceso.length > 0 && nav.length === 0) {
-          const filasProcesadas: any[] = carpetasProceso.map((c: any) => ({
+          const filasProcesadas: FilaProceso[] = carpetasProceso.map((c: any) => ({
             nombre: c.nombre,
             esDirectorio: true,
             observacion: c.observacion,
-            cargandoDetalle: true
+            cargandoDetalle: true,
+            // 🚩 PRESERVAMOS EL VALOR DEL BACKEND
+            activarConsolidadoImprenta: c.activarConsolidadoImprenta 
           }));
 
-          this.archivos.set(filasProcesadas);
+          this.archivos.set(filasProcesadas as any);
           this.carpetas.set([]);
-
-          // Pasamos las variables que recibimos por parámetro
           filasProcesadas.forEach(fila => this.buscarArchivosHijos(fila, unidadLimpia, tipoDoc));
         } else {
           this.carpetas.set(items.filter((i: any) => i.esDirectorio).map((i: any) => i.nombre));
@@ -227,7 +198,6 @@ export class RegistrosComponent implements OnInit {
   }
 
   cargarVistaMulticarpetaImprenta() {
-    console.log('Cargando vista multicarpeta para Imprenta...');
     const rutasInteres = [
       { tipo: 'cobranza', unidad: 'tesoreria' },
       { tipo: 'notificacion', unidad: '1juzgado' },
@@ -240,12 +210,10 @@ export class RegistrosComponent implements OnInit {
 
     forkJoin(peticiones).subscribe({
       next: (resultados) => {
-        let todasLasFilas: any[] = [];
-
+        let todasLasFilas: FilaProceso[] = [];
         resultados.forEach((res, index) => {
           const config = rutasInteres[index];
           const items = res.items || [];
-          
           const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD-'));
 
           const filas = carpetasProceso.map((c: any) => ({
@@ -254,88 +222,68 @@ export class RegistrosComponent implements OnInit {
             observacion: c.observacion || `Origen: ${config.unidad}`,
             unidadOrigen: config.unidad,
             tipoOrigen: config.tipo,
-            cargandoDetalle: true
+            cargandoDetalle: true,
+            activarConsolidadoImprenta: c.activarConsolidadoImprenta // 🚩 IMPORTANTE
           }));
-          
           todasLasFilas = [...todasLasFilas, ...filas];
         });
 
-        this.archivos.set(todasLasFilas);
+        this.archivos.set(todasLasFilas as any);
         this.carpetas.set([]);
         this.cargando.set(false);
-
-        todasLasFilas.forEach(fila => {
-          this.buscarArchivosHijos(fila, fila.unidadOrigen, fila.tipoOrigen);
-        });
+        todasLasFilas.forEach(fila => this.buscarArchivosHijos(fila, fila.unidadOrigen!, fila.tipoOrigen!));
       },
       error: () => this.cargando.set(false)
     });
   }
 
 private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) {
-  const baseLog = `📂 Proceso [${fila.nombre}]:`;
+  // 🚩 ESTRATEGIA: Guardamos el estado que el padre ya trae desde la raíz
+  // para que las sub-peticiones no lo pisen con 'false'
+  const estadoHabilitadoOriginal = fila.activarConsolidadoImprenta;
 
-  // 1. Log para Reportes
+  // 1. Reportes
   const urlReportes = `listar/${tipoDoc}/${unidad}/${fila.nombre}/REPORTES`;
-  console.log(`${baseLog} Buscando Reporte en -> ${urlReportes}`);
   this.dataService.get<any>(urlReportes, {}).subscribe(res => {
     const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
-    if (pdf) {
-      fila.pdfReporte = pdf.nombre;
-      console.log(`${baseLog} ✅ Reporte encontrado: ${pdf.nombre}`);
-    }
+    if (pdf) fila.pdfReporte = pdf.nombre;
+    // Restauramos valor original
+    fila.activarConsolidadoImprenta = estadoHabilitadoOriginal;
   });
 
-  // 2. Log para Consolidados
+  // 2. Consolidados
   const urlConsolidados = `listar/${tipoDoc}/${unidad}/${fila.nombre}/CARTAS_CONSOLIDADAS`;
-  console.log(`${baseLog} Buscando Consolidado en -> ${urlConsolidados}`);
   this.dataService.get<any>(urlConsolidados, {}).subscribe(res => {
     const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
-    if (pdf) {
-      fila.pdfConsolidado = pdf.nombre;
-      console.log(`${baseLog} ✅ Consolidado encontrado: ${pdf.nombre}`);
-    }
+    if (pdf) fila.pdfConsolidado = pdf.nombre;
+    // Restauramos valor original
+    fila.activarConsolidadoImprenta = estadoHabilitadoOriginal;
   });
 
-  // 3. Log para Excel (Upload)
+  // 3. Excel (Upload)
   const urlUpload = `listar/upload/${tipoDoc}/${unidad}/${fila.nombre}`;
-  console.log(`${baseLog} Buscando Excel Original en -> ${urlUpload}`);
   this.dataService.get<any>(urlUpload, {}).subscribe(res => {
     const excel = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.xlsx'));
-    if (excel) {
-      fila.excelOriginal = excel.nombre;
-      console.log(`${baseLog} ✅ Excel encontrado: ${excel.nombre}`);
-    }
+    if (excel) fila.excelOriginal = excel.nombre;
     fila.cargandoDetalle = false;
+    // Restauramos valor original
+    fila.activarConsolidadoImprenta = estadoHabilitadoOriginal;
   });
 }
 
   navegarACarpeta(nombreCarpeta: string) {
-    // Si el nombre empieza con CD-, ya estamos mostrando sus archivos hijos 
-    // mediante buscarArchivosHijos, por lo tanto anulamos la navegación profunda.
-    if (nombreCarpeta.startsWith('CD-')) {
-      console.log('Navegación anulada: Ya se muestran los archivos para', nombreCarpeta);
-      return;
-    }
-
+    if (nombreCarpeta.startsWith('CD-')) return;
     this.rutaNavegacion.update(path => [...path, nombreCarpeta]);
     this.cargarNivel();
   }
 
   volverAtras() {
-    this.rutaNavegacion.update(path => {
-      if (path.length > 0) {
-        return path.slice(0, -1);
-      }
-      return path;
-    });
-    
-    this.paginaActual.set(0); // Resetear página al subir de nivel
+    this.rutaNavegacion.update(path => path.length > 0 ? path.slice(0, -1) : path);
+    this.paginaActual.set(0);
     this.cargarNivel();
   }
 
   obtenerUnidadLimpia(): string {
-    console.log('Obteniendo unidad limpia desde localStorage...', localStorage.getItem('codigo_unidad'));
     return (localStorage.getItem('codigo_unidad') || 'tesoreria').replace('imsb_', '');
   }
 
@@ -343,41 +291,53 @@ private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) 
     const unidad = this.obtenerUnidadLimpia();
     const tipoDoc = this.tipoDocumento();
     const nav = this.rutaNavegacion();
-    
     let path = `${tipoDoc}/${unidad}`;
-    if (nav.length > 0) {
-      path += `/${nav.join('/')}`;
-    }
-    
-    const urlDownload = `${path}/${nombreArchivo}`;
-    this.ejecutarDescarga(urlDownload, nombreArchivo);
+    if (nav.length > 0) path += `/${nav.join('/')}`;
+    this.ejecutarDescarga(`${path}/${nombreArchivo}`, nombreArchivo);
   }
 
-  // Método para descargas desde la fila consolidada (Botones de colores)
   descargarEspecial(nombreCarpeta: string, subTipo: string, archivo: string): void {
     const unidad = this.obtenerUnidadLimpia();
     const tipoDoc = this.tipoDocumento();
-    
-    // Construimos la ruta SIN el prefijo "download/" al inicio
-    let pathFinal = '';
-    
-    if (subTipo === 'upload') {
-      // Resultado esperado: upload/cobranza/tesoreria/CD_123/archivo.xlsx
-      pathFinal = `upload/${tipoDoc}/${unidad}/${nombreCarpeta}/${archivo}`;
-    } else {
-      // Resultado esperado: cobranza/tesoreria/CD_123/REPORTES/archivo.pdf
-      pathFinal = `${tipoDoc}/${unidad}/${nombreCarpeta}/${subTipo}/${archivo}`;
+    let pathFinal = subTipo === 'upload' 
+      ? `upload/${tipoDoc}/${unidad}/${nombreCarpeta}/${archivo}`
+      : `${tipoDoc}/${unidad}/${nombreCarpeta}/${subTipo}/${archivo}`;
+    this.ejecutarDescarga(pathFinal, archivo);
+  }
+
+  habilitarParaImprenta(element: FilaProceso) {
+    // 1. Validar si ya está habilitado para no hacer nada
+    if (element.activarConsolidadoImprenta) {
+      this.snackBar.open('Este proceso ya se encuentra habilitado.', 'Cerrar', { duration: 2000 });
+      return;
     }
 
-    // LOG DE DIAGNÓSTICO
-    console.log("--- DEBUG DESCARGA ---");
-    console.log("1. Carpeta:", nombreCarpeta);
-    console.log("2. Subtipo:", subTipo);
-    console.log("3. Path construido:", pathFinal);
-    console.log("----------------------");
+    // 2. Modal de confirmación
+    const mensaje = `¿Está seguro que desea habilitar el proceso "${element.nombre}" para la imprenta?`;
+    
+    if (confirm(mensaje)) { // Puedes reemplazar esto por this.dialog.open(TuComponente)
+      this.ejecutarHabilitacion(element);
+    }
+  }
 
-    // Si tu método ejecutarDescarga ya pone el "download/", pásale solo el pathFinal
-    this.ejecutarDescarga(`${pathFinal}`, archivo);
+  ejecutarHabilitacion(element: any) {
+    if (element.cargandoHabilitar) return;
+    element.cargandoHabilitar = true;
+    const unidad = this.obtenerUnidadLimpia();
+    const proceso = element.nombre;
+    const tipoDoc = this.tipoDocumento();
+    const url = `habilitar-imprenta/${tipoDoc}/${unidad}/${proceso}/CARTAS_CONSOLIDADAS`;
+
+    this.dataService.get<any>(url).subscribe({
+      next: (res: any) => {
+        element.activarConsolidadoImprenta = true; // Forzamos a true
+        this.snackBar.open('Proceso habilitado exitosamente para Imprenta', 'Cerrar', { duration: 3000 });
+      },
+      error: (err: any) => {
+        this.snackBar.open('Error al intentar habilitar el proceso', 'Cerrar', { duration: 3000 });
+      },
+      complete: () => element.cargandoHabilitar = false
+    });
   }
 
   private ejecutarDescarga(url: string, nombre: string): void {
@@ -394,14 +354,14 @@ private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) 
   }
 
   onCambiarPagina(event: PageEvent) {
-  this.paginaActual.set(event.pageIndex);
-  this.pageSize.set(event.pageSize);
-  this.cargarNivel(); // Vuelve a llamar al backend con los nuevos parámetros
-}
+    this.paginaActual.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+    this.cargarNivel();
+  }
 
-onBuscar(valor: string) {
-  this.filtroNombre.set(valor);
-  this.paginaActual.set(0); // Resetear a la primera página al buscar
-  this.cargarNivel();
-}
+  onBuscar(valor: string) {
+    this.filtroNombre.set(valor);
+    this.paginaActual.set(0);
+    this.cargarNivel();
+  }
 }
