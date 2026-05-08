@@ -32,6 +32,7 @@ export interface FilaProceso {
   cargandoHabilitar?: boolean;
   unidadOrigen?: string;
   tipoOrigen?: string;
+  descargasImprenta?: { fechaDescarga: string; usuarioImprenta: string }[];
 }
 
 @NgComponent({
@@ -237,39 +238,63 @@ export class RegistrosComponent implements OnInit {
     });
   }
 
-private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) {
-  // 🚩 ESTRATEGIA: Guardamos el estado que el padre ya trae desde la raíz
-  // para que las sub-peticiones no lo pisen con 'false'
-  const estadoHabilitadoOriginal = fila.activarConsolidadoImprenta;
+  private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) {
+      fila.cargandoDetalle = true;
 
-  // 1. Reportes
-  const urlReportes = `listar/${tipoDoc}/${unidad}/${fila.nombre}/REPORTES`;
-  this.dataService.get<any>(urlReportes, {}).subscribe(res => {
-    const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
-    if (pdf) fila.pdfReporte = pdf.nombre;
-    // Restauramos valor original
-    fila.activarConsolidadoImprenta = estadoHabilitadoOriginal;
-  });
+      // 1. REPORTES: Busca el PDF del reporte
+      this.dataService.get<any>(`listar/${tipoDoc}/${unidad}/${fila.nombre}/REPORTES`, {}).subscribe({
+          next: (res) => {
+              const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
+              if (pdf) fila.pdfReporte = pdf.nombre;
+          }
+      });
 
-  // 2. Consolidados
-  const urlConsolidados = `listar/${tipoDoc}/${unidad}/${fila.nombre}/CARTAS_CONSOLIDADAS`;
-  this.dataService.get<any>(urlConsolidados, {}).subscribe(res => {
-    const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
-    if (pdf) fila.pdfConsolidado = pdf.nombre;
-    // Restauramos valor original
-    fila.activarConsolidadoImprenta = estadoHabilitadoOriginal;
-  });
+      // 2. EXCEL (Upload): Busca el archivo Excel original
+      this.dataService.get<any>(`listar/upload/${tipoDoc}/${unidad}/${fila.nombre}`, {}).subscribe({
+          next: (res) => {
+              const excel = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.xlsx'));
+              if (excel) fila.excelOriginal = excel.nombre;
+          }
+      });
 
-  // 3. Excel (Upload)
-  const urlUpload = `listar/upload/${tipoDoc}/${unidad}/${fila.nombre}`;
-  this.dataService.get<any>(urlUpload, {}).subscribe(res => {
-    const excel = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.xlsx'));
-    if (excel) fila.excelOriginal = excel.nombre;
-    fila.cargandoDetalle = false;
-    // Restauramos valor original
-    fila.activarConsolidadoImprenta = estadoHabilitadoOriginal;
-  });
-}
+      // 3. CONSOLIDADOS: Primero metadatos, luego el archivo físico
+      this.dataService.get<any>(`listar/${tipoDoc}/${unidad}/${fila.nombre}`, {}).subscribe({
+          next: (res) => {
+              const items = res.items || [];
+              // Buscamos la carpeta CARTAS_CONSOLIDADAS que trae los metadatos de imprenta
+              const folderConsolidado = items.find((i: any) => i.nombre === 'CARTAS_CONSOLIDADAS');
+
+              if (folderConsolidado) {
+                  // Seteamos los flags que vimos en tu JSON de respuesta
+                  fila.activarConsolidadoImprenta = folderConsolidado.activarConsolidadoImprenta;
+                  fila.descargasImprenta = folderConsolidado.descargasImprenta ?? [];
+
+                  // Entramos a buscar el nombre del PDF real para la descarga
+                  const urlContenido = `listar/${tipoDoc}/${unidad}/${fila.nombre}/CARTAS_CONSOLIDADAS`;
+                  this.dataService.get<any>(urlContenido, {}).subscribe({
+                      next: (resInner) => {
+                          const archivosInternos = resInner.items || [];
+                          const pdfEncontrado = archivosInternos.find((f: any) => f.nombre.toLowerCase().endsWith('.pdf'));
+                          
+                          if (pdfEncontrado) {
+                              fila.pdfConsolidado = pdfEncontrado.nombre;
+                          }
+                          
+                          // Finalizamos carga
+                          fila.cargandoDetalle = false;
+                          
+                          // Log de control (puedes borrarlo después)
+                          console.log(`[${fila.nombre}] - Activado: ${fila.activarConsolidadoImprenta} - PDF: ${fila.pdfConsolidado}`);
+                      },
+                      error: () => fila.cargandoDetalle = false
+                  });
+              } else {
+                  fila.cargandoDetalle = false;
+              }
+          },
+          error: () => fila.cargandoDetalle = false
+      });
+  }
 
   navegarACarpeta(nombreCarpeta: string) {
     if (nombreCarpeta.startsWith('CD-')) return;
@@ -288,21 +313,41 @@ private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) 
   }
 
   descargar(nombreArchivo: string): void {
-    const unidad = this.obtenerUnidadLimpia();
-    const tipoDoc = this.tipoDocumento();
-    const nav = this.rutaNavegacion();
-    let path = `${tipoDoc}/${unidad}`;
-    if (nav.length > 0) path += `/${nav.join('/')}`;
-    this.ejecutarDescarga(`${path}/${nombreArchivo}`, nombreArchivo);
+      const unidadDeDocumentos = this.unidadSeleccionada()?.codigoUnidadLimpia || this.obtenerUnidadLimpia();
+      const tipoDoc = this.tipoDocumento();
+      const nav = this.rutaNavegacion();
+      
+      let path = `${tipoDoc}/${unidadDeDocumentos}`;
+      if (nav.length > 0) path += `/${nav.join('/')}`;
+
+      const perfilLogueado = localStorage.getItem('codigo_unidad')?.replace('imsb_', '');
+      const metadatos = (perfilLogueado === 'imprenta') ? this.obtenerMetadatosUsuario() : undefined;
+
+      this.ejecutarDescarga(`${path}/${nombreArchivo}`, nombreArchivo, metadatos);
   }
 
   descargarEspecial(nombreCarpeta: string, subTipo: string, archivo: string): void {
-    const unidad = this.obtenerUnidadLimpia();
-    const tipoDoc = this.tipoDocumento();
-    let pathFinal = subTipo === 'upload' 
-      ? `upload/${tipoDoc}/${unidad}/${nombreCarpeta}/${archivo}`
-      : `${tipoDoc}/${unidad}/${nombreCarpeta}/${subTipo}/${archivo}`;
-    this.ejecutarDescarga(pathFinal, archivo);
+      // 1. La unidad de la carpeta que estamos viendo (ej: 'tesoreria')
+      // Si hay algo seleccionado en el combo, usamos eso. Si no, usamos la unidad del login.
+      const unidadDeDocumentos = this.unidadSeleccionada()?.codigoUnidadLimpia || this.obtenerUnidadLimpia();
+      
+      // 2. El tipo de documento (cobranza/notificacion)
+      const tipoDoc = this.tipoDocumento();
+      
+      // 3. Armar el Path Final con la unidad dueña de los archivos
+      let pathFinal = subTipo === 'upload' 
+        ? `upload/${tipoDoc}/${unidadDeDocumentos}/${nombreCarpeta}/${archivo}`
+        : `${tipoDoc}/${unidadDeDocumentos}/${nombreCarpeta}/${subTipo}/${archivo}`;
+
+      // 4. ¿Quién está descargando? (Para los metadatos)
+      // Aquí sí miramos el login original. Si el que inició sesión es 'imprenta', mandamos el header.
+      const perfilLogueado = localStorage.getItem('codigo_unidad')?.replace('imsb_', '');
+      const esImprenta = perfilLogueado === 'imprenta';
+      
+      const metadatos = esImprenta ? this.obtenerMetadatosUsuario() : undefined;
+
+      console.log("Iniciando descarga para Imprenta:", { pathFinal, archivo, metadatos });
+      this.ejecutarDescarga(pathFinal, archivo, metadatos);
   }
 
   habilitarParaImprenta(element: FilaProceso) {
@@ -340,8 +385,13 @@ private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) 
     });
   }
 
-  private ejecutarDescarga(url: string, nombre: string): void {
-    this.dataService.descargarArchivo(url).subscribe({
+  private ejecutarDescarga(url: string, nombre: string, metadatos?: any): void {
+  // Si hay metadatos, usamos el método de imprenta, si no, el universal
+    const peticion = metadatos 
+      ? this.dataService.descargarArchivoImprenta(url, metadatos)
+      : this.dataService.descargarArchivo(url);
+
+    peticion.subscribe({
       next: (blob) => {
         const link = document.createElement('a');
         link.href = window.URL.createObjectURL(blob);
@@ -349,9 +399,32 @@ private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) 
         link.click();
         window.URL.revokeObjectURL(link.href);
       },
-      error: (err) => console.error('Error al descargar:', err)
+      error: (err) => {
+        this.snackBar.open('Error al procesar la descarga', 'Cerrar', { duration: 3000 });
+        console.error('Error al descargar:', err);
+      }
     });
   }
+
+  // --- NUEVO: Helper para preparar metadatos de imprenta ---
+  private obtenerMetadatosUsuario(): any {
+  const userData = localStorage.getItem('usuario');
+  let subValue = 'usuario_desconocido';
+
+  if (userData) {
+    try {
+      // Parseamos el JSON para acceder a las propiedades
+      const usuarioObj = JSON.parse(userData);
+      subValue = usuarioObj.sub || 'usuario_desconocido';
+    } catch (e) {
+      console.error("Error al parsear el usuario del localStorage", e);
+    }
+  }
+
+  return {
+    nombre: subValue
+  };
+}
 
   onCambiarPagina(event: PageEvent) {
     this.paginaActual.set(event.pageIndex);

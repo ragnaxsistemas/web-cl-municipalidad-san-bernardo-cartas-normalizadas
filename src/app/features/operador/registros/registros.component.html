@@ -86,13 +86,12 @@
       </ng-container>
 
       <ng-container matColumnDef="acciones">
-        <th mat-header-cell *matHeaderCellDef> Descargar </th>
+        <th mat-header-cell *matHeaderCellDef> Acciones </th>
         <td mat-cell *matCellDef="let element">
           
           @if (element.esDirectorio && element.nombre.startsWith('CD-')) {
-            <div class="group-actions">
+            <div class="group-actions" style="display: flex; align-items: center; gap: 6px;">
               
-              <!-- Mostramos Excel y Reporte solo si NO es imprenta -->
               @if (obtenerUnidadLimpia() !== 'imprenta') {
                 @if (element.excelOriginal) {
                   <button mat-icon-button color="accent" 
@@ -109,45 +108,60 @@
                     <mat-icon>picture_as_pdf</mat-icon>
                   </button>
                 }
-              }
 
-              <!-- El Consolidado se muestra para TODOS (incluyendo imprenta) -->
-              @if (element.pdfConsolidado) {
-                <button mat-icon-button style="color: #2e7d32;" 
-                        (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
-                        matTooltip="Cartas Consolidadas">
-                  <mat-icon>picture_as_pdf</mat-icon>
-                </button>
-              }
-              
-              <!-- Botón Habilitar (Nuevo) -->
-              @if (['tesoreria', '1juzgado', '2juzgado'].includes(obtenerUnidadLimpia())) {
-                <button mat-flat-button 
-                        [color]="element.activarConsolidadoImprenta ? '' : 'primary'"
-                        [style.background-color]="element.activarConsolidadoImprenta ? '#e0e0e0' : null"
-                        [style.color]="element.activarConsolidadoImprenta ? '#9e9e9e' : null"
-                        (click)="habilitarParaImprenta(element)"
-                        style="margin-right: 8px; scale: 0.8;"
-                        [disabled]="element.cargandoHabilitar || element.activarConsolidadoImprenta">
-                  
-                  <mat-icon>{{ element.activarConsolidadoImprenta ? 'lock' : 'check_circle' }}</mat-icon>
-                  
-                  {{ element.activarConsolidadoImprenta ? 'Habilitada' : 'Habilitar' }}
-                </button>
-              }
+                @if (element.pdfConsolidado) {
+                  <button mat-icon-button style="color: #2e7d32;"
+                          (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
+                          matTooltip="Cartas Consolidadas">
+                    <mat-icon>picture_as_pdf</mat-icon>
+                  </button>
+                }
 
-              @if (element.cargandoDetalle) {
+                @if (['tesoreria', '1juzgado', '2juzgado'].includes(obtenerUnidadLimpia())) {
+                  <button mat-flat-button 
+                          [color]="element.activarConsolidadoImprenta ? '' : 'primary'"
+                          [style.background-color]="element.activarConsolidadoImprenta ? '#e8f5e9' : null"
+                          [style.color]="element.activarConsolidadoImprenta ? '#2e7d32' : null"
+                          (click)="habilitarParaImprenta(element)"
+                          style="scale: 0.8; border-radius: 20px; margin-left: 8px;"
+                          [disabled]="element.cargandoHabilitar || element.activarConsolidadoImprenta">
+                    <mat-icon>{{ element.activarConsolidadoImprenta ? 'verified' : 'publish' }}</mat-icon>
+                    {{ element.activarConsolidadoImprenta ? 'Habilitado' : 'Enviar' }}
+                  </button>
+                }
+              } @if (obtenerUnidadLimpia() === 'imprenta' && element.activarConsolidadoImprenta) {
+                <div class="imprenta-download-container" style="display: flex; align-items: center;">
+                  @if (element.pdfConsolidado) {
+                    @let descargas = element.descargasImprenta || [];
+                    @let tieneDescargas = descargas.length > 0;
+
+                    <button mat-icon-button 
+                            style="color: #2e7d32;" 
+                            (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
+                            [matTooltip]="tieneDescargas ? 'Re-descargar' : 'Descargar PDF'">
+                      <mat-icon>picture_as_pdf</mat-icon>
+                    </button>
+
+                    @if (tieneDescargas) {
+                      <span class="badge-descargas" 
+                            style="font-weight: bold; color: #1565c0; font-size: 13px; margin-left: -2px;">
+                        {{ descargas.length }}
+                      </span>
+                    }
+                  } @else {
+                    <mat-spinner diameter="18" style="margin: 10px;"></mat-spinner>
+                  }
+                </div>
+              } @if (element.cargandoDetalle) {
                 <mat-spinner diameter="20"></mat-spinner>
               }
-            </div>
-          }
 
-          <!-- Botón de descarga genérico para archivos sueltos -->
-          @if (!element.esDirectorio) {
+            </div> } @if (!element.esDirectorio) {
             <button mat-icon-button color="primary" (click)="descargar(element.nombre)">
               <mat-icon>download</mat-icon>
             </button>
           }
+
         </td>
       </ng-container>
 

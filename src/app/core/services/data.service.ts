@@ -1,6 +1,6 @@
 // src/app/core/services/data.service.ts
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { AuthService } from './auth.service';
 import { Observable } from 'rxjs';
@@ -101,5 +101,23 @@ export class DataService {
   descargarArchivo(pathCompleto: string): Observable<Blob> {
     const url = `${this.API_URL}/download/${pathCompleto}`;
     return this.http.get(url, { responseType: 'blob' });
+  }
+
+  // 2. Método específico para Imprenta (Envía el objeto de metadatos)
+  descargarArchivoImprenta(pathCompleto: string, metadatos: any): Observable<Blob> {
+    const url = `${this.API_URL}/download-imprenta/${pathCompleto}`;
+    
+    // Convertimos el objeto a JSON y luego a Base64
+    const objetoJson = JSON.stringify(metadatos);
+    // btoa maneja strings ASCII; usamos encodeURIComponent para soportar tildes/eñes
+    const objetoBase64 = btoa(unescape(encodeURIComponent(objetoJson)));
+
+    // Ahora 'HttpHeaders' será reconocido gracias al import
+    const headers = new HttpHeaders().set('X-Download-Metadata', objetoBase64);
+
+    return this.http.get(url, { 
+      headers: headers,
+      responseType: 'blob' 
+    });
   }
 }
