@@ -62,6 +62,7 @@ export class NormalizarComponent {
   private snackBar = inject(MatSnackBar);
   private dataService = inject(DataService);
   private authService = inject(AuthService);
+  
 
   @ViewChild('loadingDialog') loadingDialogTpl!: TemplateRef<any>;
   
@@ -143,90 +144,120 @@ export class NormalizarComponent {
   }
 
   cargarHistorialNormalizados() {
-  const user = this.authService.user();
-  const tipoActual = this.tipoDocumento();
-  const unidadCodigo = user?.unidadNegocio?.codigoUnidad?.replace('imsb_', '') || 
-                      localStorage.getItem('unidadCodigo')?.replace('imsb_', '') || 'tesoreria';
+    const user = this.authService.user();
+    
+    // 1. Obtenemos el valor crudo (ej: '1juzgado' o 'cobranza')
+    const valorTipoCrudo = this.tipoDocumento();
+    
+    // 2. Normalizamos el tipo: si contiene 'juzgado', siempre será 'notificacion'
+    // de lo contrario, por defecto será 'cobranza' (o el valor que traiga si es tesorería)
+    const tipoActual = valorTipoCrudo.toLowerCase().includes('juzgado') 
+      ? 'notificacion' 
+      : 'cobranza';
 
-  this.dataService.listarArchivos('normalizado', tipoActual, unidadCodigo).pipe(
-    switchMap((res: any) => {
-      const items = res.items || [];
-      
-      // 🚩 CAMBIO: Solo tomamos la primera carpeta (la más reciente)
-      const ultimaCarpeta = items
-        .filter((item: any) => item.esDirectorio)
-        .sort((a: any, b: any) => b.nombre.localeCompare(a.nombre))
-        .slice(0, 1); // <--- Cambiado de 5 a 1
+    const unidadCodigo = user?.unidadNegocio?.codigoUnidad?.replace('imsb_', '') || 
+                        localStorage.getItem('unidadCodigo')?.replace('imsb_', '') || 'tesoreria';
+    
+    // Log para verificar que ahora imprima "notificacion" o "cobranza"
+    console.log(`📂 Cargando historial para tipo normalizado: ${tipoActual}, unidad: ${unidadCodigo}`);
 
-      if (ultimaCarpeta.length === 0) return of([]);
+    this.dataService.listarArchivos('normalizado', tipoActual, unidadCodigo).pipe(
+      switchMap((res: any) => {
+        const items = res.items || [];
+        
+        const ultimaCarpeta = items
+          .filter((item: any) => item.esDirectorio)
+          .sort((a: any, b: any) => b.nombre.localeCompare(a.nombre))
+          .slice(0, 1);
 
-      const c = ultimaCarpeta[0];
+        if (ultimaCarpeta.length === 0) return of([]);
 
-      // Hacemos la petición solo para esa carpeta específica
-      return this.dataService.listarArchivos('normalizado', tipoActual, unidadCodigo, c.nombre).pipe(
-        map((resInterno: any) => {
-          const archivos = resInterno.items || [];
-          const excel = archivos.find((f: any) => f.nombre.endsWith('.xlsx'));
-          
-          // Retornamos un array con un solo objeto para que la tabla lo reconozca
-          return [{
-            tipo: tipoActual,
-            unidad: unidadCodigo,
-            carpeta: c.nombre,
-            nombreExcel: excel ? excel.nombre : null,
-            observacion: excel?.observacion || '---',
-            creacion: this.extraerFechaDeNombre(c.nombre)
-          }];
-        })
-      );
-    })
-  ).subscribe({
-    next: (res: any[]) => {
-      this.resultados.set(res);
-    },
-    error: (err) => {
-      console.error('❌ Error historial:', err);
-      this.resultados.set([]);
-    }
-  });
-}
+        const c = ultimaCarpeta[0];
+
+        return this.dataService.listarArchivos('normalizado', tipoActual, unidadCodigo, c.nombre).pipe(
+          map((resInterno: any) => {
+            const archivos = resInterno.items || [];
+            const excel = archivos.find((f: any) => f.nombre.endsWith('.xlsx'));
+            
+            return [{
+              tipo: tipoActual, // Aquí ya queda guardado como 'notificacion' o 'cobranza'
+              unidad: unidadCodigo,
+              carpeta: c.nombre,
+              nombreExcel: excel ? excel.nombre : null,
+              observacion: excel?.observacion || '---',
+              creacion: this.extraerFechaDeNombre(c.nombre)
+            }];
+          })
+        );
+      })
+    ).subscribe({
+      next: (res: any[]) => {
+        this.resultados.set(res);
+      },
+      error: (err) => {
+        console.error('❌ Error historial:', err);
+        this.resultados.set([]);
+      }
+    });
+  }
 
   generarCartasFinales() {
     const file = this.archivoCsvAdjunto();
     const ultimo = this.resultados()[0];
+    const user = this.authService.user();
 
-    if (!file || this.cargando()) return;
+    if (!file || this.cargando() || !user) return;
 
-    const user = this.authService.user(); // Usamos el signal del AuthService
-    console.log('Iniciando proceso de generación de cartas con:', user);
+    // --- Depuración: Ver qué trae el usuario ---
+    const codigoCrudo = user.unidadNegocio?.codigoUnidad || '';
+    console.log('🔍 Valor original de unidadNegocio.codigoUnidad:', codigoCrudo);
 
-    // Seteamos cargando a true, pero NO abrimos diálogo
     this.cargando.set(true);
-    
-    // Notificamos que empezó
     this.snackBar.open('Proceso iniciado.', 'OK', { duration: 3000 });
+
+    // --- Lógica Dinámica Corregida ---
+    let tipo = 'cobranza'; 
+    let unidad = 'tesoreria';
+
+    // Limpiamos el código (quitamos imsb_ y pasamos a minúsculas)
+    const unidadLimpia = codigoCrudo.toLowerCase().replace('imsb_', '');
+    console.log('🧹 Unidad normalizada para lógica:', unidadLimpia);
+
+    if (unidadLimpia.includes('juzgado')) {
+      tipo = 'notificacion';
+      // Mantenemos el nombre de la unidad que espera el backend (juzgado o 1juzgado)
+      unidad = unidadLimpia; 
+    } else {
+      tipo = 'cobranza';
+      unidad = 'tesoreria';
+    }
+
+    console.log(`🚀 Enviando a endpoint -> Tipo: ${tipo}, Unidad: ${unidad}`);
+    // --------------------------------------------
 
     const formData = new FormData();
     formData.append('archivo', file);
-    formData.append('user', user?.sub || 'usuario_desconocido');
+    formData.append('user', user.sub || 'usuario_desconocido');
 
-    if (ultimo && ultimo.nombreExcel) {
+    if (ultimo?.nombreExcel) {
       const rutaRelativa = `${ultimo.carpeta}/${ultimo.nombreExcel}`;
-      formData.append('rutaExcel', rutaRelativa); 
+      formData.append('rutaExcel', rutaRelativa);
     }
 
-    this.dataService.post<any>('procesar-normalizacion/from-correos-to-merge/cobranza/tesoreria', formData)
+    const endpoint = `procesar-normalizacion/from-correos-to-merge/${tipo}/${unidad}`;
+
+    this.dataService.post<any>(endpoint, formData)
       .subscribe({
         next: (res) => {
           this.snackBar.open('✅ ¡Cartas generadas con éxito!', 'Cerrar', { 
-            duration: 10000, // Más tiempo para que lo vea si estaba en otra cosa
+            duration: 10000,
             panelClass: ['success-snackbar'] 
           });
           this.archivoCsvAdjunto.set(null); 
-          this.cargarHistorialNormalizados(); // Refrescar la tabla automáticamente
+          this.cargarHistorialNormalizados();
         },
         error: (err) => {
-          console.error('Error:', err);
+          console.error('❌ Error en la petición:', err);
           this.snackBar.open('❌ Error en el proceso de cartas', 'Cerrar', { duration: 7000 });
         },
         complete: () => {
