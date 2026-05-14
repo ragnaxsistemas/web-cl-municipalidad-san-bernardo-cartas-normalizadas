@@ -35,6 +35,15 @@ export const routes: Routes = [
           titulo: 'Panel de Control - Imprenta' 
         } 
       },
+      // 🚩 NUEVA RUTA PARA IMPRENTA 
+      { 
+        path: 'registro/administracion', 
+        component: RegistrosComponent, 
+        data: { 
+          tipo: 'administracion', // Esto ayudará a tu lógica interna
+          titulo: 'Panel de Control - Adminitración' 
+        } 
+      },
       // --- ADJUNTAR (CARGA DE EXCEL/PDF) ---
       // Asegúrate de que estos "path" coincidan con lo que viene en el JWT (menu.value2)
       { 
