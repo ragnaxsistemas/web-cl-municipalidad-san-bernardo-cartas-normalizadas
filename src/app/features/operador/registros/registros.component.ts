@@ -99,14 +99,13 @@ export class RegistrosComponent implements OnInit {
       const tipoRuta = data['tipo']; 
       this.tipoDocumento.set(tipoRuta);
       this.tituloPagina.set(data['titulo'] || 'Consultas');
-      
       this.rutaNavegacion.set([]); 
       this.paginaActual.set(0);
 
       const unidadOriginal = localStorage.getItem('codigo_unidad') || '';
       const unidadLimpia = unidadOriginal.replace('imsb_', '');
 
-      if (tipoRuta === 'imprenta' || unidadLimpia === 'imprenta' || unidadLimpia === 'admin') {
+      if (tipoRuta === 'imprenta' || unidadLimpia === 'imprenta' || unidadLimpia === 'administracion') {
         this.mostrarSelectorUnidad.set(true);
         this.cargarUnidadesHabilitadas(unidadLimpia);
       } else {
