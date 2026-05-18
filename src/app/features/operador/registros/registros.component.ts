@@ -17,17 +17,18 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable, forkJoin, of } from 'rxjs';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { HttpEvent, HttpEventType } from '@angular/common/http'; // 🚩 AGREGADO
 
 export interface FilaProceso {
   nombre: string;
-  esDirectorio: boolean; // Cambiado a boolean para mayor flexibilidad
+  esDirectorio: boolean; 
   pdfReporte?: string;
+  pdfConsolidated?: string; // Nota: en tu código usabas pdfConsolidado
   pdfConsolidado?: string;
   excelOriginal?: string;
   cargandoDetalle?: boolean;
   observacion?: string;
   usuario?: string;
-  // --- CAMPOS PARA HABILITAR IMPRENTA ---
   activarConsolidadoImprenta?: boolean; 
   cargandoHabilitar?: boolean;
   unidadOrigen?: string;
@@ -41,13 +42,8 @@ export interface FilaProceso {
   imports: [
     CommonModule, FormsModule, MatTableModule, 
     MatInputModule, MatFormFieldModule, MatButtonModule, 
-    MatIconModule,
-    MatPaginatorModule,
-    MatProgressSpinnerModule,
-    MatTooltipModule,
-    MatSnackBarModule,
-    MatDialogModule,
-    MatSnackBarModule
+    MatIconModule, MatPaginatorModule, MatProgressSpinnerModule,
+    MatTooltipModule, MatSnackBarModule, MatDialogModule
   ],
   templateUrl: './registros.component.html',
   styleUrls: ['./registros.component.scss']
@@ -75,6 +71,10 @@ export class RegistrosComponent implements OnInit {
   paginaActual = signal(0);
   cargando = signal(false);
 
+  // 🚩 SIGNALS NUEVOS PARA MANEJAR EL MODAL DE DESCARGA PESADA
+  mostrarModalCarga = signal<boolean>(false);
+  mensajeModal = signal<string>('Preparando descarga del archivo consolidado...');
+
   dataSource = computed(() => {
     const carpetasObj = this.carpetas().map(nombre => ({
       nombre: nombre,
@@ -96,7 +96,7 @@ export class RegistrosComponent implements OnInit {
 
   ngOnInit() {
     this.route.data.subscribe(data => {
-      const tipoRuta = data['tipo']; 
+      const tipoRuta = data['tipo'];
       this.tipoDocumento.set(tipoRuta);
       this.tituloPagina.set(data['titulo'] || 'Consultas');
       this.rutaNavegacion.set([]); 
@@ -365,65 +365,122 @@ export class RegistrosComponent implements OnInit {
   }
 
   ejecutarHabilitacion(element: any) {
-    if (element.cargandoHabilitar) return;
-    element.cargandoHabilitar = true;
-    const unidad = this.obtenerUnidadLimpia();
-    const proceso = element.nombre;
-    const tipoDoc = this.tipoDocumento();
-    const url = `habilitar-imprenta/${tipoDoc}/${unidad}/${proceso}/CARTAS_CONSOLIDADAS`;
+      if (element.cargandoHabilitar) return;
+      element.cargandoHabilitar = true;
+      const unidad = this.obtenerUnidadLimpia();
+      const proceso = element.nombre;
+      const tipoDoc = this.tipoDocumento();
+      const url = `habilitar-imprenta/${tipoDoc}/${unidad}/${proceso}/CARTAS_CONSOLIDADAS`;
 
-    this.dataService.get<any>(url).subscribe({
-      next: (res: any) => {
-        element.activarConsolidadoImprenta = true; // Forzamos a true
-        this.snackBar.open('Proceso habilitado exitosamente para Imprenta', 'Cerrar', { duration: 3000 });
-      },
-      error: (err: any) => {
-        this.snackBar.open('Error al intentar habilitar el proceso', 'Cerrar', { duration: 3000 });
-      },
-      complete: () => element.cargandoHabilitar = false
-    });
-  }
-
-  private ejecutarDescarga(url: string, nombre: string, metadatos?: any): void {
-  // Si hay metadatos, usamos el método de imprenta, si no, el universal
-    const peticion = metadatos 
-      ? this.dataService.descargarArchivoImprenta(url, metadatos)
-      : this.dataService.descargarArchivo(url);
-
-    peticion.subscribe({
-      next: (blob) => {
-        const link = document.createElement('a');
-        link.href = window.URL.createObjectURL(blob);
-        link.download = nombre;
-        link.click();
-        window.URL.revokeObjectURL(link.href);
-      },
-      error: (err) => {
-        this.snackBar.open('Error al procesar la descarga', 'Cerrar', { duration: 3000 });
-        console.error('Error al descargar:', err);
-      }
-    });
-  }
-
-  // --- NUEVO: Helper para preparar metadatos de imprenta ---
-  private obtenerMetadatosUsuario(): any {
-  const userData = localStorage.getItem('usuario');
-  let subValue = 'usuario_desconocido';
-
-  if (userData) {
-    try {
-      // Parseamos el JSON para acceder a las propiedades
-      const usuarioObj = JSON.parse(userData);
-      subValue = usuarioObj.sub || 'usuario_desconocido';
-    } catch (e) {
-      console.error("Error al parsear el usuario del localStorage", e);
+      this.dataService.get<any>(url).subscribe({
+        next: (res: any) => {
+          element.activarConsolidadoImprenta = true; // Forzamos a true
+          this.snackBar.open('Proceso habilitado exitosamente para Imprenta', 'Cerrar', { duration: 3000 });
+        },
+        error: (err: any) => {
+          this.snackBar.open('Error al intentar habilitar el proceso', 'Cerrar', { duration: 3000 });
+        },
+        complete: () => element.cargandoHabilitar = false
+      });
     }
+
+  private ejecutarDescarga(urlRelativa: string, nombre: string, metadatos?: any): void {
+  
+  // 1. SI NO ES IMPRENTA: Descarga por IP con aviso visual temporal en Angular
+  if (!metadatos) {
+    // Levantamos el modal visual para avisarle al usuario qué está pasando
+    this.mensajeModal.set('Conectando con el servidor de almacenamiento masivo... Por favor, espere.');
+    this.mostrarModalCarga.set(true);
+    
+    const urlDirectaAWS = `http://3.140.205.250/imsbcartas/download/${urlRelativa}`;
+    
+    // Abrimos la pestaña temporal en blanco
+    const ventanaTemporal = window.open('', '_blank');
+    
+    if (ventanaTemporal) {
+      ventanaTemporal.location.href = urlDirectaAWS;
+      
+      // Esperamos el tiempo estándar para que el navegador capture el archivo
+      setTimeout(() => {
+        ventanaTemporal.close();
+        
+        // Modificamos el mensaje del modal para confirmar que el navegador ya tomó el control
+        this.mensajeModal.set('¡Descarga transferida con éxito! El archivo de 2GB se seguirá bajando en la barra de su navegador.');
+        
+        // Dejamos el mensaje en pantalla por 3 segundos para que alcancen a leerlo antes de cerrar el modal
+        setTimeout(() => {
+          this.mostrarModalCarga.set(false);
+          this.snackBar.open('Descarga iniciada en segundo plano.', 'Cerrar', { duration: 3000 });
+        }, 3500);
+
+      }, 600);
+    } else {
+      // Plan B si los popups están bloqueados al extremo
+      this.mostrarModalCarga.set(false);
+      const link = document.createElement('a');
+      link.href = urlDirectaAWS;
+      link.download = nombre;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    return;
   }
 
-  return {
-    nombre: subValue
-  };
+  // 2. SI ES IMPRENTA: Flujo seguro por HttpClient con metadatos y barra progresiva (vía cPanel)
+  this.mensajeModal.set('Preparando los archivos en el servidor... Por favor espere.');
+  this.mostrarModalCarga.set(true);
+
+  this.dataService.descargarArchivoImprenta(urlRelativa, metadatos).subscribe({
+    next: (event: any) => {
+      if (event.type === HttpEventType.ResponseHeader) {
+        if (event.status === 200) {
+          this.mensajeModal.set('¡Conexión establecida! Descargando por canal seguro...');
+        }
+      }
+      if (event.type === HttpEventType.DownloadProgress) {
+        const descargadoMB = (event.loaded / (1024 * 1024)).toFixed(2);
+        this.mensajeModal.set(`Descargando archivo: ${descargadoMB} MB recibidos...`);
+      }
+      if (event.type === HttpEventType.Response) {
+        this.mostrarModalCarga.set(false);
+        const blob = new Blob([event.body], { type: event.headers.get('content-type') || 'application/octet-stream' });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = nombre;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        this.snackBar.open('Descarga completada con éxito', 'Cerrar', { duration: 2000 });
+      }
+    },
+    error: (err: any) => {
+      this.mostrarModalCarga.set(false);
+      this.snackBar.open('Error en el canal de descarga masiva.', 'Cerrar', { duration: 4000 });
+      console.error('Error al descargar:', err);
+    }
+  });
 }
+
+    // --- NUEVO: Helper para preparar metadatos de imprenta ---
+  private obtenerMetadatosUsuario(): any {
+    const userData = localStorage.getItem('usuario');
+    let subValue = 'usuario_desconocido';
+
+    if (userData) {
+      try {
+        // Parseamos el JSON para acceder a las propiedades
+        const usuarioObj = JSON.parse(userData);
+        subValue = usuarioObj.sub || 'usuario_desconocido';
+      } catch (e) {
+        console.error("Error al parsear el usuario del localStorage", e);
+      }
+    }
+
+    return { nombre: subValue };
+  }
 
   onCambiarPagina(event: PageEvent) {
     this.paginaActual.set(event.pageIndex);

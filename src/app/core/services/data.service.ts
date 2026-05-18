@@ -1,6 +1,7 @@
 // src/app/core/services/data.service.ts
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { HttpEvent, HttpEventType } from '@angular/common/http'; // 🚩 AGREGADO
 import { environment } from '../../../environments/environment';
 import { AuthService } from './auth.service';
 import { Observable } from 'rxjs';
@@ -98,13 +99,18 @@ export class DataService {
   /**
    * Descarga binaria de archivos
    */
-  descargarArchivo(pathCompleto: string): Observable<Blob> {
+  descargarArchivo(pathCompleto: string): Observable<HttpEvent<Blob>> {
     const url = `${this.API_URL}/download/${pathCompleto}`;
-    return this.http.get(url, { responseType: 'blob' });
+    
+    return this.http.get(url, { 
+      responseType: 'blob',
+      reportProgress: true, // 🚩 Obliga a Angular a escuchar los bytes transmitidos
+      observe: 'events'     // 🚩 Obliga a Angular a retornar el flujo de eventos, no solo el cuerpo final
+    });
   }
 
   // 2. Método específico para Imprenta (Envía el objeto de metadatos)
-  descargarArchivoImprenta(pathCompleto: string, metadatos: any): Observable<Blob> {
+  descargarArchivoImprenta(pathCompleto: string, metadatos: any): Observable<HttpEvent<Blob>> {
     const url = `${this.API_URL}/download-imprenta/${pathCompleto}`;
     
     // Convertimos el objeto a JSON y luego a Base64
@@ -117,7 +123,9 @@ export class DataService {
 
     return this.http.get(url, { 
       headers: headers,
-      responseType: 'blob' 
+      responseType: 'blob',
+      reportProgress: true, // 🚩 Obliga a Angular a escuchar los bytes transmitidos
+      observe: 'events'     // 🚩 Obliga a Angular a retornar el flujo de eventos, no solo el cuerpo final
     });
   }
 }

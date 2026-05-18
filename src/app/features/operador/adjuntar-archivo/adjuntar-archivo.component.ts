@@ -20,7 +20,7 @@ import { map, switchMap } from 'rxjs/operators';
 
 import { DataService } from '../../../core/services/data.service';
 import { AuthService } from '../../../core/services/auth.service';
-
+import { HttpEvent, HttpEventType } from '@angular/common/http'; // 🚩 Asegúrate de importar esto arriba
 
 @Component({
   selector: 'app-adjuntar',
@@ -256,12 +256,21 @@ finalizarProceso() {
   descargarExcel(element: any) {
     if (!element.nombreExcel) return;
     // Construimos la ruta completa: "upload/cobranza/tesoreria/nombre_carpeta/archivo.xlsx"
-    const rutaCompleta = `upload/${element.tipo}/${element.unidad}/${element.carpeta}/${element.nombreExcel}`;
-    
-    this.dataService.descargarArchivo(rutaCompleta).subscribe({
-      next: (blob: Blob) => this.ejecutarDescargaLocal(blob, element.nombreExcel),
-      error: (err) => console.error('Error al descargar Excel:', err)
+      const rutaCompleta = `upload/${element.tipo}/${element.unidad}/${element.carpeta}/${element.nombreExcel}`;
+      
+      this.dataService.descargarArchivo(rutaCompleta).subscribe({
+      next: (event: HttpEvent<Blob>) => {
+        // Solo cuando el stream termine por completo pasamos el Blob a tu función local
+        if (event.type === HttpEventType.Response) {
+          this.ejecutarDescargaLocal(event.body as Blob, element.nombreExcel);
+        }
+      },
+      error: (err) => {
+        console.error('Error al descargar Archivo Excel:', err);
+      }
     });
+
+
   }
 
   descargarCsv(element: any) {
@@ -270,8 +279,15 @@ finalizarProceso() {
     const rutaCompleta = `normalizado/${element.tipo}/${element.unidad}/${element.carpeta}/${element.nombreCsv}`;
     
     this.dataService.descargarArchivo(rutaCompleta).subscribe({
-      next: (blob: Blob) => this.ejecutarDescargaLocal(blob, element.nombreCsv),
-      error: (err) => console.error('Error al descargar CSV:', err)
+      next: (event: HttpEvent<Blob>) => {
+        // Solo cuando el stream termine por completo pasamos el Blob a tu función local
+        if (event.type === HttpEventType.Response) {
+          this.ejecutarDescargaLocal(event.body as Blob, element.nombreCsv);
+        }
+      },
+      error: (err) => {
+        console.error('Error al descargar Archivo Excel:', err);
+      }
     });
   }
 

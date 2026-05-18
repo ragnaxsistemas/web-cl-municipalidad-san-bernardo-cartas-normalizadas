@@ -183,3 +183,12 @@
     </mat-paginator>
   </div>
 </div>
+
+@if (mostrarModalCarga()) {
+  <div class="modal-descarga-backdrop">
+    <div class="modal-descarga-contenido">
+      <h3>{{ mensajeModal() }}</h3>
+      <p>Por favor, no cierre esta pestaña ni actualice el navegador hasta que finalice la transferencia.</p>
+    </div>
+  </div>
+}
