@@ -1,0 +1,37 @@
+<div class="imsb-container">
+  <div class="imsb-card">
+    <div class="imsb-card-header">
+      <i class="bx bx-book-open icon-header"></i>
+      <h2>Documentación Oficial</h2>
+      <p>Soporte y Capacitación del Sistema IMSB</p>
+    </div>
+
+    <div class="imsb-card-body">
+      <div class="info-box">
+        <p>
+          Bienvenido a la sección de descargas. El siguiente documento contiene el 
+          <strong>Manual de Usuario Oficial</strong> con las instrucciones detalladas para la 
+          operación, gestión de módulos y resolución de dudas del sistema.
+        </p>
+        <ul class="file-details">
+          <li><strong>Archivo:</strong> manual_usuario.pdf</li>
+          <li><strong>Formato:</strong> PDF (Acrobat Reader)</li>
+          <li><strong>Acceso:</strong> Público / Institucional</li>
+        </ul>
+      </div>
+
+      <div class="action-zone">
+        <button 
+          class="btn-imsb-download" 
+          [disabled]="cargando()" 
+          (click)="bajarPdf()">
+          @if (cargando()) {
+            <span class="spinner"></span> Procesando...
+          } @else {
+            <i class="bx bx-cloud-download"></i> Descargar Manual de Usuario
+          }
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

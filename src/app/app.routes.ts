@@ -5,6 +5,7 @@ import { RegistrosComponent } from './features/operador/registros/registros.comp
 import { AdjuntarComponent } from './features/operador/adjuntar-archivo/adjuntar-archivo.component'; 
 import { NormalizarComponent } from './features/operador/normalizar-archivo/normalizar-archivo.component';
 import { ProcesarArchivoComponent } from './features/operador/procesar-archivo/procesar-archivo.component'; // 🚩 IMPORT NUEVO
+import { DocumentacionComponent } from './features/operador/documentacion/documentacion.component';
 import { authGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
@@ -88,6 +89,24 @@ export const routes: Routes = [
         component: ProcesarArchivoComponent, 
         data: { tipo: 'notificacion' } 
       },
+
+      // 🚩 NUEVAS RUTAS: DOCUMENTACIÓN (Diferenciadas por data.tipo)
+      { 
+        path: 'cobranza/documentacion', 
+        component: DocumentacionComponent, 
+        data: { tipo: 'cobranza', titulo: 'Documentación de Cobranza' } 
+      },
+      { 
+        path: 'notificacion/documentacion', 
+        component: DocumentacionComponent, 
+        data: { tipo: 'notificacion', titulo: 'Documentación de Notificaciones' } 
+      },
+      { 
+        path: 'administracion/documentacion', 
+        component: DocumentacionComponent, 
+        data: { tipo: 'administracion', titulo: 'Documentación del Sistema / Administración' } 
+      },
+
 
       // Redirección por defecto al estar logueado
       { path: '', redirectTo: 'cobranza/registros', pathMatch: 'full' }

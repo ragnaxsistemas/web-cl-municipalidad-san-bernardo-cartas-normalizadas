@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://sistemacartas.sanbernardo.cl/imsbcartas'
+  apiUrl: 'https://apicartas.sanbernardo.cl/imsbcartas'
 };

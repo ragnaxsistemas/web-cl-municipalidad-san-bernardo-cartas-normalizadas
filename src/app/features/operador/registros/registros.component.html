@@ -126,7 +126,7 @@
                           style="scale: 0.8; border-radius: 20px; margin-left: 8px;"
                           [disabled]="element.cargandoHabilitar || element.activarConsolidadoImprenta">
                     <mat-icon>{{ element.activarConsolidadoImprenta ? 'verified' : 'publish' }}</mat-icon>
-                    {{ element.activarConsolidadoImprenta ? 'Habilitado' : 'Enviar' }}
+                    {{ element.activarConsolidadoImprenta ? 'Habilitado' : 'Habilitar' }}
                   </button>
                 }
               } @if (obtenerUnidadLimpia() === 'imprenta' && element.activarConsolidadoImprenta) {

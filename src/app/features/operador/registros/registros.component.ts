@@ -18,6 +18,7 @@ import { Observable, forkJoin, of } from 'rxjs';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { HttpEvent, HttpEventType } from '@angular/common/http'; // 🚩 AGREGADO
+import { environment } from '../../../../environments/environment';
 
 export interface FilaProceso {
   nombre: string;
@@ -345,7 +346,6 @@ export class RegistrosComponent implements OnInit {
       
       const metadatos = esImprenta ? this.obtenerMetadatosUsuario() : undefined;
 
-      console.log("Iniciando descarga para Imprenta:", { pathFinal, archivo, metadatos });
       this.ejecutarDescarga(pathFinal, archivo, metadatos);
   }
 
@@ -386,83 +386,103 @@ export class RegistrosComponent implements OnInit {
 
   private ejecutarDescarga(urlRelativa: string, nombre: string, metadatos?: any): void {
   
-  // 1. SI NO ES IMPRENTA: Descarga por IP con aviso visual temporal en Angular
-  if (!metadatos) {
-    // Levantamos el modal visual para avisarle al usuario qué está pasando
-    this.mensajeModal.set('Conectando con el servidor de almacenamiento masivo... Por favor, espere.');
-    this.mostrarModalCarga.set(true);
-    
-    const urlDirectaAWS = `http://3.140.205.250/imsbcartas/download/${urlRelativa}`;
-    
-    // Abrimos la pestaña temporal en blanco
-    const ventanaTemporal = window.open('', '_blank');
-    
-    if (ventanaTemporal) {
-      ventanaTemporal.location.href = urlDirectaAWS;
+    // =========================================================================
+    // 1. FLUJO NORMAL (Operadores Comunes): Descarga rápida por pestaña temporal
+    // =========================================================================
+    console.log("ejecutarDescarga", metadatos ? "con metadatos para imprenta" : "sin metadatos, flujo normal");
+    if (!metadatos) {
+      this.mensajeModal.set('Conectando con el servidor de almacenamiento masivo... Por favor, espere.');
+      this.mostrarModalCarga.set(true);
       
-      // Esperamos el tiempo estándar para que el navegador capture el archivo
-      setTimeout(() => {
-        ventanaTemporal.close();
+      // Determinar la URL base dinámicamente según el entorno
+      let baseUrlDescarga = '';
+      if (environment.apiUrl.includes('localhost')) {
+        baseUrlDescarga = environment.apiUrl; // Usa tu puerto local en desarrollo (MacBook)
+      } else {
+        baseUrlDescarga = 'https://apicartas.sanbernardo.cl/imsbcartas'; // Salta directo a la IP por el puerto 80 en AWS
+      }
+
+      const urlDirectaAWS = `${baseUrlDescarga}/download/${urlRelativa}`;
+      console.log("URL de descarga normal generada:", urlDirectaAWS);
+      
+      // Abrimos la pestaña temporal en blanco
+      const ventanaTemporal = window.open('', '_blank');
+      
+      if (ventanaTemporal) {
+        ventanaTemporal.location.href = urlDirectaAWS;
         
-        // Modificamos el mensaje del modal para confirmar que el navegador ya tomó el control
-        this.mensajeModal.set('¡Descarga transferida con éxito! El archivo de 2GB se seguirá bajando en la barra de su navegador.');
-        
-        // Dejamos el mensaje en pantalla por 3 segundos para que alcancen a leerlo antes de cerrar el modal
+        // Esperamos el tiempo estándar para que el navegador capture el archivo
         setTimeout(() => {
-          this.mostrarModalCarga.set(false);
-          this.snackBar.open('Descarga iniciada en segundo plano.', 'Cerrar', { duration: 3000 });
-        }, 3500);
+          //ventanaTemporal.close();
+          
+          // Confirmamos visualmente que el navegador ya tomó el control del flujo de red
+          this.mensajeModal.set('¡Descarga transferida con éxito! El archivo se seguirá bajando en la barra de su navegador.');
+          
+          // Mantenemos el mensaje 3.5 segundos en pantalla antes de cerrar el modal
+          setTimeout(() => {
+            this.mostrarModalCarga.set(false);
+            this.snackBar.open('Descarga iniciada en segundo plano.', 'Cerrar', { duration: 3000 });
+          }, 3500);
 
-      }, 600);
-    } else {
-      // Plan B si los popups están bloqueados al extremo
-      this.mostrarModalCarga.set(false);
-      const link = document.createElement('a');
-      link.href = urlDirectaAWS;
-      link.download = nombre;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-    return;
-  }
-
-  // 2. SI ES IMPRENTA: Flujo seguro por HttpClient con metadatos y barra progresiva (vía cPanel)
-  this.mensajeModal.set('Preparando los archivos en el servidor... Por favor espere.');
-  this.mostrarModalCarga.set(true);
-
-  this.dataService.descargarArchivoImprenta(urlRelativa, metadatos).subscribe({
-    next: (event: any) => {
-      if (event.type === HttpEventType.ResponseHeader) {
-        if (event.status === 200) {
-          this.mensajeModal.set('¡Conexión establecida! Descargando por canal seguro...');
-        }
-      }
-      if (event.type === HttpEventType.DownloadProgress) {
-        const descargadoMB = (event.loaded / (1024 * 1024)).toFixed(2);
-        this.mensajeModal.set(`Descargando archivo: ${descargadoMB} MB recibidos...`);
-      }
-      if (event.type === HttpEventType.Response) {
+        }, 600);
+      } else {
+        // Plan B clásico si el navegador bloquea las pestañas emergentes por completo
         this.mostrarModalCarga.set(false);
-        const blob = new Blob([event.body], { type: event.headers.get('content-type') || 'application/octet-stream' });
-        const downloadUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = downloadUrl;
+        link.href = urlDirectaAWS;
         link.download = nombre;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(downloadUrl);
-        this.snackBar.open('Descarga completada con éxito', 'Cerrar', { duration: 2000 });
       }
-    },
-    error: (err: any) => {
-      this.mostrarModalCarga.set(false);
-      this.snackBar.open('Error en el canal de descarga masiva.', 'Cerrar', { duration: 4000 });
-      console.error('Error al descargar:', err);
+      return;
     }
-  });
-}
+
+    // =========================================================================
+    // 2. FLUJO IMPRENTA: Descarga reactiva controlada con HttpClient y metadatos
+    // =========================================================================
+    this.mensajeModal.set('Preparando los archivos de imprenta en el servidor... Por favor espere.');
+    this.mostrarModalCarga.set(true);
+    
+    console.log("Iniciando descarga con metadatos para Imprenta:", { urlRelativa, nombre, metadatos });
+
+    // Usamos el servicio que le pega al dominio HTTPS con el token de auditoría en los headers
+    this.dataService.descargarArchivoImprenta(urlRelativa, metadatos).subscribe({
+      next: (event: any) => {
+        if (event.type === HttpEventType.ResponseHeader) {
+          if (event.status === 200) {
+            this.mensajeModal.set('¡Conexión establecida con la Imprenta! Descargando por canal seguro...');
+          }
+        }
+        // Actualiza el modal en tiempo real calculando los megabytes recibidos
+        if (event.type === HttpEventType.DownloadProgress) {
+          const descargadoMB = (event.loaded / (1024 * 1024)).toFixed(2);
+          this.mensajeModal.set(`Descargando archivo de imprenta: ${descargadoMB} MB recibidos...`);
+        }
+        // Cuando Nginx termina de inyectar todos los bytes a través del stream
+        if (event.type === HttpEventType.Response) {
+          this.mostrarModalCarga.set(false);
+          
+          const blob = new Blob([event.body], { type: event.headers.get('content-type') || 'application/octet-stream' });
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = nombre;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(downloadUrl);
+          
+          this.snackBar.open('Descarga de imprenta completada con éxito.', 'Cerrar', { duration: 2000 });
+        }
+      },
+      error: (err: any) => {
+        this.mostrarModalCarga.set(false);
+        this.snackBar.open('Error en el canal de descarga masiva de imprenta.', 'Cerrar', { duration: 4000 });
+        console.error('Error al descargar para imprenta:', err);
+      }
+    });
+  }
 
     // --- NUEVO: Helper para preparar metadatos de imprenta ---
   private obtenerMetadatosUsuario(): any {

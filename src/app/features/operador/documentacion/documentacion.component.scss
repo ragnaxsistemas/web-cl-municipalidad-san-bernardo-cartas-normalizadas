@@ -1,0 +1,123 @@
+.imsb-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 20px;
+  min-height: 70vh;
+  background-color: #f4f6f9;
+}
+
+.imsb-card {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 600px;
+  border-top: 4px solid #1e3a8a; /* Azul Institucional */
+  overflow: hidden;
+}
+
+.imsb-card-header {
+  text-align: center;
+  padding: 30px 20px 20px 20px;
+  background: linear-gradient(to bottom, #fafbfc, #ffffff);
+}
+
+.icon-header {
+  font-size: 3rem;
+  color: #1e3a8a;
+  margin-bottom: 10px;
+}
+
+.imsb-card-header h2 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.imsb-card-header p {
+  margin: 5px 0 0 0;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.imsb-card-body {
+  padding: 20px 30px 40px 30px;
+}
+
+.info-box {
+  background-color: #f8fafc;
+  border-left: 4px solid #3b82f6;
+  padding: 15px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 25px;
+}
+
+.info-box p {
+  margin: 0 0 15px 0;
+  color: #334155;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.file-details {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.file-details li {
+  margin-bottom: 5px;
+}
+
+.action-zone {
+  display: flex;
+  justify-content: center;
+}
+
+.btn-imsb-download {
+  background-color: #1e3a8a;
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn-imsb-download:hover:not(:disabled) {
+  background-color: #172554;
+}
+
+.btn-imsb-download:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-imsb-download:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* Spinner Animación */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #ffffff;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
