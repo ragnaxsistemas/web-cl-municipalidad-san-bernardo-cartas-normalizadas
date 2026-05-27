@@ -387,9 +387,10 @@ export class RegistrosComponent implements OnInit {
   private ejecutarDescarga(urlRelativa: string, nombre: string, metadatos?: any): void {
   
     // =========================================================================
-    // 1. FLUJO NORMAL (Operadores Comunes): Descarga rápida por pestaña temporal
+    // 1. FLUJO NORMAL (Operadores Comunes): Descarga rápida en la misma pestaña
     // =========================================================================
     console.log("ejecutarDescarga", metadatos ? "con metadatos para imprenta" : "sin metadatos, flujo normal");
+    
     if (!metadatos) {
       this.mensajeModal.set('Conectando con el servidor de almacenamiento masivo... Por favor, espere.');
       this.mostrarModalCarga.set(true);
@@ -397,44 +398,39 @@ export class RegistrosComponent implements OnInit {
       // Determinar la URL base dinámicamente según el entorno
       let baseUrlDescarga = '';
       if (environment.apiUrl.includes('localhost')) {
-        baseUrlDescarga = environment.apiUrl; // Usa tu puerto local en desarrollo (MacBook)
+        baseUrlDescarga = environment.apiUrl; // Desarrollo local (MacBook)
       } else {
-        baseUrlDescarga = 'https://apicartas.sanbernardo.cl/imsbcartas'; // Salta directo a la IP por el puerto 80 en AWS
+        baseUrlDescarga = 'https://apicartas.sanbernardo.cl/imsbcartas'; // Subdominio seguro en AWS
       }
 
       const urlDirectaAWS = `${baseUrlDescarga}/download/${urlRelativa}`;
       console.log("URL de descarga normal generada:", urlDirectaAWS);
       
-      // Abrimos la pestaña temporal en blanco
-      const ventanaTemporal = window.open('', '_blank');
+      // 🚩 MEJORA: Descarga directa y transparente sin abrir pestañas secundarias
+      const link = document.createElement('a');
+      link.href = urlDirectaAWS;
+      link.download = nombre;
+      document.body.appendChild(link);
       
-      if (ventanaTemporal) {
-        ventanaTemporal.location.href = urlDirectaAWS;
-        
-        // Esperamos el tiempo estándar para que el navegador capture el archivo
-        setTimeout(() => {
-          //ventanaTemporal.close();
-          
-          // Confirmamos visualmente que el navegador ya tomó el control del flujo de red
-          this.mensajeModal.set('¡Descarga transferida con éxito! El archivo se seguirá bajando en la barra de su navegador.');
-          
-          // Mantenemos el mensaje 3.5 segundos en pantalla antes de cerrar el modal
-          setTimeout(() => {
-            this.mostrarModalCarga.set(false);
-            this.snackBar.open('Descarga iniciada en segundo plano.', 'Cerrar', { duration: 3000 });
-          }, 3500);
+      // 🚀 LOG DE INICIO DE DESCARGA EN EL NAVEGADOR (Flujo Normal)
+      console.info(
+        `%c📥 [NAVEGADOR] Descarga iniciada con éxito: "${nombre}" desde el canal seguro.`, 
+        "color: #2e7d32; font-weight: bold; font-size: 12px;"
+      );
 
-        }, 600);
-      } else {
-        // Plan B clásico si el navegador bloquea las pestañas emergentes por completo
-        this.mostrarModalCarga.set(false);
-        const link = document.createElement('a');
-        link.href = urlDirectaAWS;
-        link.download = nombre;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
+      link.click();
+      document.body.removeChild(link);
+      
+      // Al ser un adjunto instantáneo vía Nginx, damos un feedback visual fluido antes de cerrar el modal
+      setTimeout(() => {
+        this.mensajeModal.set('¡Descarga transferida con éxito! El archivo aparecerá en su barra de descargas.');
+        
+        setTimeout(() => {
+          this.mostrarModalCarga.set(false);
+          this.snackBar.open('Descarga iniciada con éxito.', 'Cerrar', { duration: 3000 });
+        }, 2000);
+      }, 600);
+
       return;
     }
 
@@ -446,7 +442,7 @@ export class RegistrosComponent implements OnInit {
     
     console.log("Iniciando descarga con metadatos para Imprenta:", { urlRelativa, nombre, metadatos });
 
-    // Usamos el servicio que le pega al dominio HTTPS con el token de auditoría en los headers
+    // Nota: Asegúrate de que 'this.dataService' use 'https://apicartas.sanbernardo.cl/imsbcartas' internamente en producción
     this.dataService.descargarArchivoImprenta(urlRelativa, metadatos).subscribe({
       next: (event: any) => {
         if (event.type === HttpEventType.ResponseHeader) {
@@ -469,6 +465,13 @@ export class RegistrosComponent implements OnInit {
           link.href = downloadUrl;
           link.download = nombre;
           document.body.appendChild(link);
+          
+          // 🚀 LOG DE INICIO DE DESCARGA EN EL NAVEGADOR (Flujo Imprenta)
+          console.info(
+            `%c📥 [NAVEGADOR] Descarga iniciada con éxito: Archivo de Imprenta "${nombre}" reconstruído desde Blob.`, 
+            "color: #1565c0; font-weight: bold; font-size: 12px;"
+          );
+
           link.click();
           document.body.removeChild(link);
           window.URL.revokeObjectURL(downloadUrl);
