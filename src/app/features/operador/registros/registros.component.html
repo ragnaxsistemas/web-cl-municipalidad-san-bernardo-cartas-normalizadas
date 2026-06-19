@@ -66,7 +66,7 @@
         <th mat-header-cell *matHeaderCellDef> Proceso </th>
         <td mat-cell *matCellDef="let element">
           <div class="proceso-container">
-            @if (element.nombre.startsWith('CD-')) {
+            @if (element.nombre.startsWith('CD-')  || element.nombre.startsWith('CDPJ')  || element.nombre.startsWith('CDSJ') ) {
               <span class="texto-proceso-fijo"><strong>{{ element.nombre }}</strong></span>
             } @else {
               <span class="link-carpeta" (click)="navegarACarpeta(element.nombre)">
@@ -89,7 +89,7 @@
         <th mat-header-cell *matHeaderCellDef> Acciones </th>
         <td mat-cell *matCellDef="let element">
           
-          @if (element.esDirectorio && element.nombre.startsWith('CD-')) {
+          @if (esCarpetaProcesoValida(element)) {
             <div class="group-actions" style="display: flex; align-items: center; gap: 6px;">
               
               @if (obtenerUnidadLimpia() !== 'imprenta') {
@@ -110,7 +110,7 @@
                 }
 
                 @if (element.pdfConsolidado) {
-                  <button mat-icon-button style="color: #2e7d32;"
+                  <button mat-icon-button style="color: #7d2e44;"
                           (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
                           matTooltip="Cartas Consolidadas">
                     <mat-icon>picture_as_pdf</mat-icon>
@@ -129,7 +129,7 @@
                     {{ element.activarConsolidadoImprenta ? 'Habilitado' : 'Habilitar' }}
                   </button>
                 }
-              } @if (obtenerUnidadLimpia() === 'imprenta' && element.activarConsolidadoImprenta) {
+              } @if (obtenerUnidadLimpia() === 'imprenta' && element.activarConsolidatedImprenta) {
                 <div class="imprenta-download-container" style="display: flex; align-items: center;">
                   @if (element.pdfConsolidado) {
                     @let descargas = element.descargasImprenta || [];

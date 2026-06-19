@@ -71,7 +71,6 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            // ELIMINA baseHref de aquí
             "servePath": "/" 
           },
           "configurations": {

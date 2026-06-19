@@ -24,7 +24,7 @@ export interface FilaProceso {
   nombre: string;
   esDirectorio: boolean; 
   pdfReporte?: string;
-  pdfConsolidated?: string; // Nota: en tu código usabas pdfConsolidado
+  //pdfConsolidated?: string; // Nota: en tu código usabas pdfConsolidado
   pdfConsolidado?: string;
   excelOriginal?: string;
   cargandoDetalle?: boolean;
@@ -172,7 +172,9 @@ export class RegistrosComponent implements OnInit {
     this.dataService.get<any>(url, { page: '0', size: '100' }).subscribe({
       next: (res) => {
         const items = res.items || [];
-        const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD-'));
+        
+        // CORREGIDO: Se cambia .startsWith('CD-') por .startsWith('CD')
+        const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD'));
         const otrosArchivos = items.filter((i: any) => !i.esDirectorio && i.nombre.toLowerCase().endsWith('.pdf'));
 
         if (carpetasProceso.length > 0 && nav.length === 0) {
@@ -181,7 +183,6 @@ export class RegistrosComponent implements OnInit {
             esDirectorio: true,
             observacion: c.observacion,
             cargandoDetalle: true,
-            // 🚩 PRESERVAMOS EL VALOR DEL BACKEND
             activarConsolidadoImprenta: c.activarConsolidadoImprenta 
           }));
 
@@ -215,7 +216,9 @@ export class RegistrosComponent implements OnInit {
         resultados.forEach((res, index) => {
           const config = rutasInteres[index];
           const items = res.items || [];
-          const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD-'));
+          
+          // CORREGIDO: Se cambia .startsWith('CD-') por .startsWith('CD')
+          const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD'));
 
           const filas = carpetasProceso.map((c: any) => ({
             nombre: c.nombre,
@@ -224,7 +227,7 @@ export class RegistrosComponent implements OnInit {
             unidadOrigen: config.unidad,
             tipoOrigen: config.tipo,
             cargandoDetalle: true,
-            activarConsolidadoImprenta: c.activarConsolidadoImprenta // 🚩 IMPORTANTE
+            activarConsolidadoImprenta: c.activarConsolidadoImprenta
           }));
           todasLasFilas = [...todasLasFilas, ...filas];
         });
@@ -239,68 +242,96 @@ export class RegistrosComponent implements OnInit {
   }
 
   private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) {
-      fila.cargandoDetalle = true;
+    fila.cargandoDetalle = true;
 
-      // 1. REPORTES: Busca el PDF del reporte
-      this.dataService.get<any>(`listar/${tipoDoc}/${unidad}/${fila.nombre}/REPORTES`, {}).subscribe({
-          next: (res) => {
-              const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
-              if (pdf) fila.pdfReporte = pdf.nombre;
-          }
-      });
+    // 1. REPORTES: Busca el PDF del reporte
+    console.log(`[LOG] 1. Buscando reporte en: listar/${tipoDoc}/${unidad}/${fila.nombre}/REPORTES`);
+    this.dataService.get<any>(`listar/${tipoDoc}/${unidad}/${fila.nombre}/REPORTES`, {}).subscribe({
+        next: (res) => {
+            const pdf = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.pdf'));
+            if (pdf) {
+                fila.pdfReporte = pdf.nombre;
+                console.log(`[LOG] -> Reporte PDF Encontrado: ${pdf.nombre} para ${fila.nombre}`);
+            }
+        }
+    });
 
-      // 2. EXCEL (Upload): Busca el archivo Excel original
-      this.dataService.get<any>(`listar/upload/${tipoDoc}/${unidad}/${fila.nombre}`, {}).subscribe({
-          next: (res) => {
-              const excel = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.xlsx'));
-              if (excel) fila.excelOriginal = excel.nombre;
-          }
-      });
+    // 2. EXCEL (Upload): Busca el archivo Excel original en la carpeta de subidas
+    console.log(`[LOG] 2. Buscando Excel original en: listar/upload/${tipoDoc}/${unidad}/${fila.nombre}`);
+    this.dataService.get<any>(`listar/upload/${tipoDoc}/${unidad}/${fila.nombre}`, {}).subscribe({
+        next: (res) => {
+            const excel = res.items?.find((i: any) => i.nombre.toLowerCase().endsWith('.xlsx'));
+            if (excel) {
+                fila.excelOriginal = excel.nombre;
+                console.log(`[LOG] -> Excel Encontrado: ${excel.nombre} para ${fila.nombre}`);
+            }
+        }
+    });
 
-      // 3. CONSOLIDADOS: Primero metadatos, luego el archivo físico
-      this.dataService.get<any>(`listar/${tipoDoc}/${unidad}/${fila.nombre}`, {}).subscribe({
-          next: (res) => {
-              const items = res.items || [];
-              // Buscamos la carpeta CARTAS_CONSOLIDADAS que trae los metadatos de imprenta
-              const folderConsolidado = items.find((i: any) => i.nombre === 'CARTAS_CONSOLIDADAS');
+    // 3. CONSOLIDADOS: Corregido quitando '/upload/' de la ruta base de consulta
+    const urlBaseConsolidado = `listar/${tipoDoc}/${unidad}/${fila.nombre}`;
+    console.log(`[LOG] 3. Buscando Estructura Consolidada en: ${urlBaseConsolidado}`);
+    
+    this.dataService.get<any>(urlBaseConsolidado, {}).subscribe({
+        next: (res) => {
+            const items = res.items || [];
+            // Buscamos la carpeta interna CARTAS_CONSOLIDADAS
+            const folderConsolidado = items.find((i: any) => i.nombre === 'CARTAS_CONSOLIDADAS');
 
-              if (folderConsolidado) {
-                  // Seteamos los flags que vimos en tu JSON de respuesta
-                  fila.activarConsolidadoImprenta = folderConsolidado.activarConsolidadoImprenta;
-                  fila.descargasImprenta = folderConsolidado.descargasImprenta ?? [];
+            if (folderConsolidado) {
+                console.log(`[LOG] -> Carpeta CARTAS_CONSOLIDADAS detectada en ${fila.nombre}`);
+                fila.activarConsolidadoImprenta = folderConsolidado.activarConsolidadoImprenta;
+                fila.descargasImprenta = folderConsolidado.descargasImprenta ?? [];
 
-                  // Entramos a buscar el nombre del PDF real para la descarga
-                  const urlContenido = `listar/${tipoDoc}/${unidad}/${fila.nombre}/CARTAS_CONSOLIDADAS`;
-                  this.dataService.get<any>(urlContenido, {}).subscribe({
-                      next: (resInner) => {
-                          const archivosInternos = resInner.items || [];
-                          const pdfEncontrado = archivosInternos.find((f: any) => f.nombre.toLowerCase().endsWith('.pdf'));
-                          
-                          if (pdfEncontrado) {
-                              fila.pdfConsolidado = pdfEncontrado.nombre;
-                          }
-                          
-                          // Finalizamos carga
-                          fila.cargandoDetalle = false;
-                          
-                          // Log de control (puedes borrarlo después)
-                          console.log(`[${fila.nombre}] - Activado: ${fila.activarConsolidadoImprenta} - PDF: ${fila.pdfConsolidado}`);
-                      },
-                      error: () => fila.cargandoDetalle = false
-                  });
-              } else {
-                  fila.cargandoDetalle = false;
-              }
-          },
-          error: () => fila.cargandoDetalle = false
-      });
+                // Buscamos el archivo físico consolidado.pdf en la subcarpeta
+                const urlContenido = `listar/${tipoDoc}/${unidad}/${fila.nombre}/CARTAS_CONSOLIDADAS`;
+                this.dataService.get<any>(urlContenido, {}).subscribe({
+                    next: (resInner) => {
+                        const archivosInternos = resInner.items || [];
+                        const pdfEncontrado = archivosInternos.find((f: any) => f.nombre.toLowerCase().endsWith('.pdf'));
+                        
+                        if (pdfEncontrado) {
+                            fila.pdfConsolidado = pdfEncontrado.nombre; // Setea variable homologada con el HTML
+                        }
+                        
+                        fila.cargandoDetalle = false;
+                        console.log(`[LOG] FINALIZADO [${fila.nombre}] - Activado: ${fila.activarConsolidadoImprenta} - PDF: ${fila.pdfConsolidado}`);
+                    },
+                    error: () => fila.cargandoDetalle = false
+                });
+            } else {
+                console.warn(`[LOG] -> No se encontró la subcarpeta CARTAS_CONSOLIDADAS en ${urlBaseConsolidado}`);
+                fila.cargandoDetalle = false;
+            }
+        },
+        error: () => fila.cargandoDetalle = false
+    });
   }
 
   navegarACarpeta(nombreCarpeta: string) {
-    if (nombreCarpeta.startsWith('CD-')) return;
+    // 1. Definimos qué prefijo corresponde a cada unidad
+    const prefijosPorUnidad: Record<string, string> = {
+      'cobranza': 'CD-',
+      '1juzgado': 'CDPJ', // Coincide con la unidad limpia de tu vista
+      '2juzgado': 'CDSJ'
+    };
+
+    // 2. Obtenemos la unidad actual llamando al método correcto de la clase
+    const unidadActual = this.obtenerUnidadLimpia();
+    
+    // 3. Buscamos el prefijo que le corresponde a esta unidad
+    const prefijoBloqueado = prefijosPorUnidad[unidadActual];
+
+    // 4. Si la carpeta empieza con el prefijo de la unidad actual, bloqueamos la navegación
+    if (prefijoBloqueado && nombreCarpeta.startsWith(prefijoBloqueado)) {
+      return;
+    }
+
+    // Si no se cumple la condición de bloqueo, continúa la navegación normal
     this.rutaNavegacion.update(path => [...path, nombreCarpeta]);
     this.cargarNivel();
   }
+  
 
   volverAtras() {
     this.rutaNavegacion.update(path => path.length > 0 ? path.slice(0, -1) : path);
@@ -310,6 +341,16 @@ export class RegistrosComponent implements OnInit {
 
   obtenerUnidadLimpia(): string {
     return (localStorage.getItem('codigo_unidad') || 'tesoreria').replace('imsb_', '');
+  }
+
+  // 🚀 FUNCIÓN AGREGADA AQUÍ PARA CORREGIR EL ERROR DE COMPILACIÓN
+  esCarpetaProcesoValida(element: FilaProceso): boolean {
+    if (!element || !element.esDirectorio || !element.nombre) {
+      return false;
+    }
+    return element.nombre.startsWith('CD-') || 
+           element.nombre.startsWith('CDPJ') || 
+           element.nombre.startsWith('CDSJ');
   }
 
   descargar(nombreArchivo: string): void {
@@ -386,105 +427,58 @@ export class RegistrosComponent implements OnInit {
 
   private ejecutarDescarga(urlRelativa: string, nombre: string, metadatos?: any): void {
   
-    // =========================================================================
-    // 1. FLUJO NORMAL (Operadores Comunes): Descarga rápida en la misma pestaña
-    // =========================================================================
     console.log("ejecutarDescarga", metadatos ? "con metadatos para imprenta" : "sin metadatos, flujo normal");
     
-    if (!metadatos) {
-      this.mensajeModal.set('Conectando con el servidor de almacenamiento masivo... Por favor, espere.');
-      this.mostrarModalCarga.set(true);
-      
-      // Determinar la URL base dinámicamente según el entorno
-      let baseUrlDescarga = '';
-      if (environment.apiUrl.includes('localhost')) {
-        baseUrlDescarga = environment.apiUrl; // Desarrollo local (MacBook)
-      } else {
-        baseUrlDescarga = 'https://apicartas.sanbernardo.cl/imsbcartas'; // Subdominio seguro en AWS
-      }
-
-      const urlDirectaAWS = `${baseUrlDescarga}/download/${urlRelativa}`;
-      console.log("URL de descarga normal generada:", urlDirectaAWS);
-      
-      // 🚩 MEJORA: Descarga directa y transparente sin abrir pestañas secundarias
-      const link = document.createElement('a');
-      link.href = urlDirectaAWS;
-      link.download = nombre;
-      document.body.appendChild(link);
-      
-      // 🚀 LOG DE INICIO DE DESCARGA EN EL NAVEGADOR (Flujo Normal)
-      console.info(
-        `%c📥 [NAVEGADOR] Descarga iniciada con éxito: "${nombre}" desde el canal seguro.`, 
-        "color: #2e7d32; font-weight: bold; font-size: 12px;"
-      );
-
-      link.click();
-      document.body.removeChild(link);
-      
-      // Al ser un adjunto instantáneo vía Nginx, damos un feedback visual fluido antes de cerrar el modal
-      setTimeout(() => {
-        this.mensajeModal.set('¡Descarga transferida con éxito! El archivo aparecerá en su barra de descargas.');
-        
-        setTimeout(() => {
-          this.mostrarModalCarga.set(false);
-          this.snackBar.open('Descarga iniciada con éxito.', 'Cerrar', { duration: 3000 });
-        }, 2000);
-      }, 600);
-
-      return;
-    }
-
-    // =========================================================================
-    // 2. FLUJO IMPRENTA: Descarga reactiva controlada con HttpClient y metadatos
-    // =========================================================================
-    this.mensajeModal.set('Preparando los archivos de imprenta en el servidor... Por favor espere.');
+    this.mensajeModal.set('Conectando con el servidor de almacenamiento masivo... Por favor, espere.');
     this.mostrarModalCarga.set(true);
     
-    console.log("Iniciando descarga con metadatos para Imprenta:", { urlRelativa, nombre, metadatos });
+    // 1. Determinar la URL base según el entorno
+    let baseUrlDescarga = '';
+    if (environment.apiUrl.includes('localhost')) {
+      baseUrlDescarga = environment.apiUrl; // Local
+    } else {
+      baseUrlDescarga = 'https://apicartas.sanbernardo.cl/imsbcartas'; // Producción AWS
+    }
 
-    // Nota: Asegúrate de que 'this.dataService' use 'https://apicartas.sanbernardo.cl/imsbcartas' internamente en producción
-    this.dataService.descargarArchivoImprenta(urlRelativa, metadatos).subscribe({
-      next: (event: any) => {
-        if (event.type === HttpEventType.ResponseHeader) {
-          if (event.status === 200) {
-            this.mensajeModal.set('¡Conexión establecida con la Imprenta! Descargando por canal seguro...');
-          }
-        }
-        // Actualiza el modal en tiempo real calculando los megabytes recibidos
-        if (event.type === HttpEventType.DownloadProgress) {
-          const descargadoMB = (event.loaded / (1024 * 1024)).toFixed(2);
-          this.mensajeModal.set(`Descargando archivo de imprenta: ${descargadoMB} MB recibidos...`);
-        }
-        // Cuando Nginx termina de inyectar todos los bytes a través del stream
-        if (event.type === HttpEventType.Response) {
-          this.mostrarModalCarga.set(false);
-          
-          const blob = new Blob([event.body], { type: event.headers.get('content-type') || 'application/octet-stream' });
-          const downloadUrl = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = downloadUrl;
-          link.download = nombre;
-          document.body.appendChild(link);
-          
-          // 🚀 LOG DE INICIO DE DESCARGA EN EL NAVEGADOR (Flujo Imprenta)
-          console.info(
-            `%c📥 [NAVEGADOR] Descarga iniciada con éxito: Archivo de Imprenta "${nombre}" reconstruído desde Blob.`, 
-            "color: #1565c0; font-weight: bold; font-size: 12px;"
-          );
+    let urlFinalNavegador = '';
 
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(downloadUrl);
-          
-          this.snackBar.open('Descarga de imprenta completada con éxito.', 'Cerrar', { duration: 2000 });
-        }
-      },
-      error: (err: any) => {
+    if (!metadatos) {
+      // =========================================================================
+      // FLUJO NORMAL (Tesorería)
+      // =========================================================================
+      urlFinalNavegador = `${baseUrlDescarga}/download/${urlRelativa}`;
+    } else {
+      // =========================================================================
+      // FLUJO IMPRENTA (Unificado para Archivos Gigantes > 1GB)
+      // =========================================================================
+      this.mensajeModal.set('Validando credenciales de imprenta y preparando enlace masivo...');
+      
+      const objetoJson = JSON.stringify(metadatos);
+      const objetoBase64 = btoa(unescape(encodeURIComponent(objetoJson)));
+      
+      // Pasamos los metadatos como QueryParam para que el link nativo los procese
+      urlFinalNavegador = `${baseUrlDescarga}/download-imprenta/${urlRelativa}?metadata=${objetoBase64}`;
+    }
+
+    console.log("Enlace de descarga nativa generado:", urlFinalNavegador);
+    
+    // 2. Disparar la descarga nativa del navegador (Directo al disco duro)
+    const link = document.createElement('a');
+    link.href = urlFinalNavegador;
+    link.download = nombre;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // 3. Feedback visual fluido idéntico para ambos perfiles
+    setTimeout(() => {
+      this.mensajeModal.set('¡Descarga transferida con éxito al navegador! El archivo de gran tamaño se procesará en su barra de descargas.');
+      
+      setTimeout(() => {
         this.mostrarModalCarga.set(false);
-        this.snackBar.open('Error en el canal de descarga masiva de imprenta.', 'Cerrar', { duration: 4000 });
-        console.error('Error al descargar para imprenta:', err);
-      }
-    });
+        this.snackBar.open('Descarga iniciada con éxito.', 'Cerrar', { duration: 4000 });
+      }, 2000);
+    }, 1000);
   }
 
     // --- NUEVO: Helper para preparar metadatos de imprenta ---
