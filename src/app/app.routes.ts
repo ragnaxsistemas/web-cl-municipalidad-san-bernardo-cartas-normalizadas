@@ -42,7 +42,7 @@ export const routes: Routes = [
         component: RegistrosComponent, 
         data: { 
           tipo: 'administracion', // Esto ayudará a tu lógica interna
-          titulo: 'Panel de Control - Adminitración' 
+          titulo: 'Panel de Control - Administración' 
         } 
       },
       // --- ADJUNTAR (CARGA DE EXCEL/PDF) ---

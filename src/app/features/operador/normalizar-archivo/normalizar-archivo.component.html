@@ -4,56 +4,96 @@
   <mat-card class="upload-card mat-elevation-z4">
     <mat-card-content>
       <div class="drop-zone" 
-           [class.dragging]="isDragging()"
-           (dragover)="onDragOver($event)"
-           (dragleave)="onDragLeave($event)"
-           (drop)="onDrop($event)">
-        
-        <mat-icon color="primary" class="big-icon">
-          {{ archivoCsvAdjunto() ? 'check_circle' : 'cloud_upload' }}
-        </mat-icon>
-        
-        <p *ngIf="!archivoCsvAdjunto()">Seleccione el archivo recibido por Correos de Chile (NORMALIZADO)</p>
-        <p *ngIf="archivoCsvAdjunto()" class="file-name">
-          <strong>CSV cargado:</strong> {{ archivoCsvAdjunto()?.name }}
-        </p>
-
-        <div class="upload-form">
-          <input type="file" #csvInput style="display: none" 
-                 accept=".csv" (change)="onFileSelected($event)">
-          
-          <div class="actions-container">
-            <button mat-flat-button color="accent" (click)="csvInput.click()" [disabled]="cargando()">
-              <mat-icon>attach_file</mat-icon>
-              {{ archivoCsvAdjunto() ? 'CAMBIAR ARCHIVO' : 'SELECCIONAR ARCHIVO' }}
-            </button>
-
-            <button mat-raised-button 
-                    color="primary" 
-                    (click)="generarCartasFinales()" 
-                    [disabled]="!archivoCsvAdjunto() || cargando()">
-              <mat-icon *ngIf="!cargando()">auto_fix_high</mat-icon>
-              <mat-spinner diameter="20" *ngIf="cargando()" style="margin-right: 8px;"></mat-spinner>
-              GENERAR CARTAS FINALES
-           </button>
-          </div>
-        </div>
-        
+        [class.dragging]="isDragging()"
+        (dragover)="onDragOver($event)"
+        (dragleave)="onDragLeave($event)"
+        (drop)="onDrop($event)">
       
+      <mat-icon [color]="archivoGeneradoNombre() ? 'accent' : 'primary'" class="big-icon">
+        {{ archivoGeneradoNombre() ? 'download_done' : (archivoCsvAdjunto() ? 'check_circle' : 'cloud_upload') }}
+      </mat-icon>
+      
+      <p *ngIf="!archivoCsvAdjunto() && !archivoGeneradoNombre()">Seleccione el archivo recibido por Correos de Chile (NORMALIZADO)</p>
+      
+      <p *ngIf="archivoCsvAdjunto() && !archivoGeneradoNombre()" class="file-name">
+        <strong>CSV cargado:</strong> {{ archivoCsvAdjunto()?.name }}
+      </p>
 
+      <div *ngIf="archivoGeneradoNombre()" class="file-success-container" style="text-align: center; margin-bottom: 15px;">
+        <p class="file-name" style="color: #2e7d32; font-size: 16px;">
+          <strong>🎉 ¡Procesado con éxito! Archivo de salida:</strong>
+        </p>
+        <span class="badge-archivo-salida" style="background: #e8f5e9; color: #2e7d32; padding: 6px 12px; border-radius: 20px; font-weight: bold; display: inline-block; border: 1px solid #a5d6a7;">
+          {{ archivoGeneradoNombre() }}
+        </span>
       </div>
+
+      <div class="upload-form">
+        <input type="file" 
+               #fileInput 
+               style="display: none" 
+               accept=".csv" 
+               (change)="onFileSelected($event)">
+        
+        <div class="actions-container" style="display: flex; gap: 10px; justify-content: center; width: 100%;">
+          <button mat-raised-button 
+                  type="button"
+                  color="accent" 
+                  [disabled]="cargando() || archivoGeneradoNombre()"
+                  (click)="fileInput.click()">
+            <mat-icon>attach_file</mat-icon>
+            SELECCIONAR CSV
+          </button>
+
+          <button mat-raised-button 
+                  color="primary" 
+                  (click)="cargarHistorialNormalizados()" 
+                  [disabled]="!archivoCsvAdjunto() || !reporteSeleccionado() || cargando() || archivoGeneradoNombre()">
+            <mat-icon>gavel</mat-icon>
+            GENERAR CARTAS FINALES
+          </button>
+
+          <button mat-button 
+                  color="warn" 
+                  *ngIf="archivoCsvAdjunto() || archivoGeneradoNombre()"
+                  (click)="resetearFormulario()">
+            <mat-icon>refresh</mat-icon>
+            LIMPIAR
+          </button>
+        </div>
+      </div>
+    </div>
     </mat-card-content>
   </mat-card>
 
-  <div class="history-section" *ngIf="resultados().length > 0">
-    <h3>Últimos reportes normalizados</h3>
+  <div class="history-section" style="margin-top: 30px;">
+    <h3>Reportes Normalizados - Pendientes de Combinar (Todos)</h3>
+    <p class="instruction-text">
+      <mat-icon style="font-size: 16px; vertical-align: middle;">info</mat-icon> 
+      Seleccione el reporte base que corresponde al archivo CSV adjunto para proceder a la unificación:
+    </p>
     
-    <table mat-table [dataSource]="resultados()" class="mat-elevation-z8">
+    <div *ngIf="resultadosPendientes().length === 0" class="no-data-msg" style="padding: 15px; background: #fafafa; border: 1px dashed #ccc; text-align: center; color: #666; margin-bottom: 20px;">
+      No existen reportes normalizados pendientes de vinculación en este momento.
+    </div>
+
+    <table mat-table [dataSource]="resultadosPendientes()" class="mat-elevation-z8" *ngIf="resultadosPendientes().length > 0">
       
+      <ng-container matColumnDef="select">
+        <th mat-header-cell *matHeaderCellDef> Vincular </th>
+        <td mat-cell *matCellDef="let element">
+          <mat-checkbox 
+            color="primary"
+            [checked]="reporteSeleccionado() === element"
+            (change)="onSeleccionarReporte(element, $event.checked)">
+          </mat-checkbox>
+        </td>
+      </ng-container>
+
       <ng-container matColumnDef="tipo">
         <th mat-header-cell *matHeaderCellDef> Proceso </th>
         <td mat-cell *matCellDef="let element"> 
-          <span class="badge-tipo">{{ element.tipo | uppercase }}</span> 
+          <span class="badge-tipo" style="background: #fff3e0; color: #e65100;">{{ element.tipo | uppercase }}</span> 
         </td>
       </ng-container>
 
@@ -79,17 +119,61 @@
       </ng-container>
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;" [class.selected-row]="reporteSeleccionado() === row"></tr>
     </table>
-</div>
+  </div>
 
+  <hr style="margin: 45px 0; border: 0; border-top: 1px solid #e0e0e0;">
+
+  <div class="history-section table-procesados" style="margin-bottom: 40px;">
+  <h3>Historial de Archivos Procesados</h3>
+
+  <div class="table-responsive mat-elevation-z2">
+    <table mat-table [dataSource]="resultadosProcesados()" class="full-width-table">
+
+      <ng-container matColumnDef="tipo">
+        <th mat-header-cell *matHeaderCellDef> Tipo </th>
+        <td mat-cell *matCellDef="let element"> 
+          <span class="badge-tipo">{{ element.tipo | uppercase }}</span> 
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="unidad">
+        <th mat-header-cell *matHeaderCellDef> Unidad </th>
+        <td mat-cell *matCellDef="let element"> {{ element.unidad }} </td>
+      </ng-container>
+
+      <ng-container matColumnDef="creacion">
+        <th mat-header-cell *matHeaderCellDef> Fecha Procesamiento </th>
+        <td mat-cell *matCellDef="let element"> 
+          {{ element.creacion }} 
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="observacion">
+        <th mat-header-cell *matHeaderCellDef> Nombre CD </th>
+        <td mat-cell *matCellDef="let element">
+          <span style="font-weight: bold; color: #2e7d32;">
+            {{ element.observacion || '---' }}
+          </span>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumnsProcesados"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumnsProcesados;"></tr>
+    </table>
+  </div>
+</div>
 </div>
 
 <ng-template #loadingDialog>
   <div class="loading-container" style="padding: 20px; text-align: center;">
     <h3 mat-dialog-title>Generando Cartas Finales</h3>
     <mat-dialog-content>
-      <p>Generando cartas finales Chile</p>
+      <p>Por favor espere mientras unificamos el archivo con la base de datos de Correos de Chile...</p>
+      <div style="display: flex; justify-content: center; margin: 20px 0;">
+        <mat-spinner diameter="50"></mat-spinner>
+      </div>
     </mat-dialog-content>
   </div>
 </ng-template>

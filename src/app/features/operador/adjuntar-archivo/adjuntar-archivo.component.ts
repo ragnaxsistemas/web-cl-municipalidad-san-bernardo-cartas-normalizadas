@@ -57,8 +57,23 @@ export class AdjuntarComponent implements OnInit {
   loadingRef?: MatDialogRef<any>;
 
   puedeSubir = computed(() => {
+    const texto = this.headerTexto().trim();
+    const user = this.authService.user();
+    
+    // 1. Obtener unidad de negocio limpia
+    const unidadLimpia = (user?.unidadNegocio?.codigoUnidad || localStorage.getItem('unidadCodigo') || '').replace('imsb_', '');
+    
+    // 2. Resolver el prefijo estricto esperado
+    let prefijoEsperado = 'CD-';
+    if (unidadLimpia === '1juzgado') prefijoEsperado = 'CDPJ-';
+    if (unidadLimpia === '2juzgado') prefijoEsperado = 'CDSJ-';
+    
+    // 3. Expresión regular: debe empezar con el prefijo y terminar solo con números
+    const regexValidacion = new RegExp(`^${prefijoEsperado}\\d+$`);
+
+    // El botón solo se activa si hay archivo, no está cargando y el texto cumple el formato estricto
     return this.archivoSeleccionado() !== null && 
-           this.headerTexto().trim().length > 0 && 
+           regexValidacion.test(texto) && 
            !this.cargando();
   });
   
@@ -89,60 +104,62 @@ export class AdjuntarComponent implements OnInit {
 
   upload() {
     const file = this.archivoSeleccionado();
-    const texto = this.headerTexto(); 
-    const user = this.authService.user(); // Usamos el signal del AuthService
+    // 💡 Aplicamos .trim() inmediatamente para eliminar espacios al inicio o al final
+    const texto = this.headerTexto().trim(); 
+    const user = this.authService.user();
 
     // 1. Obtener la unidad directamente del localStorage (o del objeto del usuario)
-    // Priorizamos el código guardado: imsb_tesoreria, imsb_1juzgado, imsb_2juzgado
     const unidadBruta = user?.unidadNegocio?.codigoUnidad || localStorage.getItem('unidadCodigo') || '';
     const unidadLimpia = unidadBruta.replace('imsb_', '');
 
+    // --- VALIDACIÓN ESTRICTA (YA CON TRIM APLICADO) ---
+    let prefijoEsperado = 'CD-';
+    if (unidadLimpia === '1juzgado') {
+      prefijoEsperado = 'CDPJ-';
+    } else if (unidadLimpia === '2juzgado') {
+      prefijoEsperado = 'CDSJ-';
+    }
+
+    // Expresión regular: El texto limpio debe cumplir exactamente el formato
+    const regexValidacion = new RegExp(`^${prefijoEsperado}\\d+$`);
+
+    if (!regexValidacion.test(texto)) {
+      alert(`El nombre del CD no es adecuado.\n\nPara tu unidad, el formato correcto debe ser: ${prefijoEsperado} seguido de números sin espacios (Ejemplo: ${prefijoEsperado}8888).`);
+      return; // 🛑 Bloquea el servicio si tiene espacios internos (ej: "CD 123") o formato inválido
+    }
+    // --------------------------------------------------
+
     // 2. Determinar el TIPO dinámicamente basado en la unidad
     let tipoActual: 'cobranza' | 'notificacion' = 'cobranza';
-    
     if (unidadLimpia === '1juzgado' || unidadLimpia === '2juzgado') {
       tipoActual = 'notificacion';
-    } else {
-      tipoActual = 'cobranza'; // Para 'tesoreria'
     }
 
     console.log(`🚀 Iniciando upload IMSB: Unidad=${unidadLimpia}, Tipo Detectado=${tipoActual}`);
 
     if (this.puedeSubir() && user) {
-      // 1. Usamos el método que abre el modal no-bloqueante en la esquina
       this.abrirCargaArchivos();
       this.cargando.set(true);
 
       const formData = new FormData();
       formData.append('archivo', file!);
       formData.append('user', user.sub);
-      formData.append('observacion', texto);
+      formData.append('observacion', texto); // 💡 Se envía el texto limpio (sin espacios extras)
 
       const endpoint = `upload/${tipoActual}/${unidadLimpia}`;
 
       this.dataService.post<any>(endpoint, formData).subscribe({
         next: (res: any) => {
-          // 2. Cerramos el modal inmediatamente (el servidor ya tiene el archivo)
           this.finalizarProceso();
-          
-          this.snackBar.open(
-            'Archivo recibido. Se está procesando en segundo plano.', 
-            'Entendido', 
-            { duration: 5000 }
-          );
-
-          // 3. Limpiamos el formulario
+          this.snackBar.open('Archivo recibido. Se está procesando en segundo plano.', 'Entendido', { duration: 5000 });
           this.headerTexto.set(''); 
           this.archivoSeleccionado.set(null);
 
-          // Esto limpia el valor del input para que permita seleccionar el mismo archivo de nuevo
-            if (this.fileInput && this.fileInput.nativeElement) {
-              this.fileInput.nativeElement.value = ''; 
-            }
+          if (this.fileInput && this.fileInput.nativeElement) {
+            this.fileInput.nativeElement.value = ''; 
+          }
           this.cargando.set(false);
           
-          // 4. Refresco "inteligente": Esperamos 3 segundos para que el proceso
-          // asíncrono del backend alcance a crear la carpeta y el registro inicial.
           setTimeout(() => {
             this.cargarUltimosCinco();
           }, 3000);

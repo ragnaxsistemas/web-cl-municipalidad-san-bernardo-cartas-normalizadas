@@ -155,7 +155,8 @@ export class RegistrosComponent implements OnInit {
 
     if (unidadLimpia === 'imprenta') {
         if (nav.length === 0) {
-            this.cargarVistaMulticarpetaImprenta();
+          this.cargarVistaMulticarpetaImprenta(this.unidadesCombo());
+          //this.cargarVistaMulticarpetaImprenta();
         } else {
             this.ejecutarCargaEstandar(unidadLimpia, tipoDoc, nav);
         }
@@ -199,48 +200,94 @@ export class RegistrosComponent implements OnInit {
     });
   }
 
-  cargarVistaMulticarpetaImprenta() {
-    const rutasInteres = [
-      { tipo: 'cobranza', unidad: 'tesoreria' },
-      { tipo: 'notificacion', unidad: '1juzgado' },
-      { tipo: 'notificacion', unidad: '2juzgado' }
-    ];
-
-    const peticiones = rutasInteres.map(r => 
-      this.dataService.get<any>(`listar/${r.tipo}/${r.unidad}`, { page: '0', size: '100' })
-    );
-
-    forkJoin(peticiones).subscribe({
-      next: (resultados) => {
-        let todasLasFilas: FilaProceso[] = [];
-        resultados.forEach((res, index) => {
-          const config = rutasInteres[index];
-          const items = res.items || [];
-          
-          // CORREGIDO: Se cambia .startsWith('CD-') por .startsWith('CD')
-          const carpetasProceso = items.filter((i: any) => i.esDirectorio && i.nombre.startsWith('CD'));
-
-          const filas = carpetasProceso.map((c: any) => ({
-            nombre: c.nombre,
-            esDirectorio: true,
-            observacion: c.observacion || `Origen: ${config.unidad}`,
-            unidadOrigen: config.unidad,
-            tipoOrigen: config.tipo,
-            cargandoDetalle: true,
-            activarConsolidadoImprenta: c.activarConsolidadoImprenta
-          }));
-          todasLasFilas = [...todasLasFilas, ...filas];
-        });
-
-        this.archivos.set(todasLasFilas as any);
-        this.carpetas.set([]);
-        this.cargando.set(false);
-        todasLasFilas.forEach(fila => this.buscarArchivosHijos(fila, fila.unidadOrigen!, fila.tipoOrigen!));
-      },
-      error: () => this.cargando.set(false)
-    });
+  cargarVistaMulticarpetaImprenta(unidades?: any[]) {
+  // Si no se proveen unidades por argumento, rescatamos las del combo por defecto
+  const unidadesProcesar = unidades || this.unidadesCombo();
+  if (!unidadesProcesar || unidadesProcesar.length === 0) {
+    this.cargando.set(false);
+    return;
   }
 
+  this.cargando.set(true);
+
+  // 1. DETERMINAR ESTRATEGIA DE NAVEGACIÓN SEGÚN EL NIVEL
+  let observables: Observable<any>[] = [];
+
+  if (this.rutaNavegacion().length === 0) {
+    // --- CASO A: ESTAMOS EN LA RAÍZ ---
+    // Consultamos en paralelo todas las unidades autorizadas del combo usando el método real 'get'
+    observables = unidadesProcesar.map(u => {
+      const subPath = `${this.tipoDocumento().toLowerCase()}/${u.codigoUnidad.toLowerCase()}`;
+      return this.dataService.get<any>(`listar/${subPath}`);
+    });
+  } else {
+    // --- CASO B: NAVEGACIÓN INTERNA (Doble clic adentrándose en carpetas) ---
+    // Buscamos cuál unidad está seleccionada actualmente en la señal del componente
+    const unidadActual = this.unidadSeleccionada()?.codigoUnidad || unidadesProcesar[0].codigoUnidad;
+    
+    const subPathBase = `${this.tipoDocumento().toLowerCase()}/${unidadActual.toLowerCase()}`;
+    const rutaInternaCompleta = `${subPathBase}/${this.rutaNavegacion().join('/')}`;
+    
+    // Hacemos una única petición directa a la ruta interna usando 'get'
+    observables = [this.dataService.get<any>(`listar/${rutaInternaCompleta}`)];
+  }
+
+  // 2. EJECUTAR CONSULTA Y APLICAR FILTROS DE IMPRENTA
+  forkJoin(observables).subscribe({
+    next: (respuestas: any[]) => {
+      let todosLosItems: any[] = [];
+
+      // Extraemos los elementos desde la propiedad '.items' que entrega tu backend real
+      respuestas.forEach(res => {
+        if (res && res.items) {
+          todosLosItems = [...todosLosItems, ...res.items];
+        }
+      });
+
+      let itemsFiltrados: any[] = [];
+
+      if (this.rutaNavegacion().length === 0) {
+        // --- FILTRO RAÍZ: Mostrar solo carpetas de procesos multi-juzgado (CD, CDPJ, CDSJ) ---
+        itemsFiltrados = todosLosItems.filter((item: any) => {
+          if (!item.esDirectorio) return false;
+          const nombreUpper = item.nombre.toUpperCase();
+          return nombreUpper.startsWith('CD-') || 
+                 nombreUpper.startsWith('CDPJ-') || 
+                 nombreUpper.startsWith('CDSJ-');
+        });
+      } else {
+        // --- FILTRO INTERNO (Dentro de CARTAS_CONSOLIDADAS) ---
+        // Se muestran archivos (.pdf, .json) solo si activarConsolidadoImprenta es true
+        itemsFiltrados = todosLosItems.filter((item: any) => {
+          if (item.esDirectorio) {
+            return item.nombre === 'CARTAS_CONSOLIDADAS';
+          }
+          return item.activarConsolidadoImprenta === true;
+        });
+      }
+
+      // Inyectar estados de renderizado dinámico requeridos por tu tabla del HTML
+      const itemsConEstado = itemsFiltrados.map(item => ({
+        ...item,
+        cargandoDetalle: false,
+        mostrarDetalle: false,
+        descargasImprentaDetalle: item.descargasImprenta || []
+      }));
+
+      // Guardamos el resultado en la señal de filas real de tu componente
+      this.archivos.set(itemsConEstado);
+      this.totalElementos.set(itemsConEstado.length);
+      this.cargando.set(false);
+    },
+    error: (err) => {
+      console.error('Error al sincronizar directorios de Imprenta:', err);
+      this.archivos.set([]);
+      this.totalElementos.set(0);
+      this.cargando.set(false);
+      this.snackBar.open('Error al sincronizar los directorios de impresión.', 'Cerrar', { duration: 3000 });
+    }
+  });
+}
   private buscarArchivosHijos(fila: FilaProceso, unidad: string, tipoDoc: string) {
     fila.cargandoDetalle = true;
 
@@ -367,6 +414,10 @@ export class RegistrosComponent implements OnInit {
       this.ejecutarDescarga(`${path}/${nombreArchivo}`, nombreArchivo, metadatos);
   }
 
+  public esPerfilImprenta = computed(() => {
+    return this.obtenerUnidadLimpia() === 'imprenta';
+  });
+
   descargarEspecial(nombreCarpeta: string, subTipo: string, archivo: string): void {
       // 1. La unidad de la carpeta que estamos viendo (ej: 'tesoreria')
       // Si hay algo seleccionado en el combo, usamos eso. Si no, usamos la unidad del login.
@@ -390,20 +441,39 @@ export class RegistrosComponent implements OnInit {
       this.ejecutarDescarga(pathFinal, archivo, metadatos);
   }
 
-  habilitarParaImprenta(element: FilaProceso) {
-    // 1. Validar si ya está habilitado para no hacer nada
-    if (element.activarConsolidadoImprenta) {
-      this.snackBar.open('Este proceso ya se encuentra habilitado.', 'Cerrar', { duration: 2000 });
-      return;
-    }
+  habilitarParaImprenta(element: any) {
+  if (!element || element.cargandoHabilitar || element.activarConsolidadoImprenta) return;
 
-    // 2. Modal de confirmación
-    const mensaje = `¿Está seguro que desea habilitar el proceso "${element.nombre}" para la imprenta?`;
-    
-    if (confirm(mensaje)) { // Puedes reemplazar esto por this.dialog.open(TuComponente)
-      this.ejecutarHabilitacion(element);
+  element.cargandoHabilitar = true;
+  const unidadActual = this.unidadSeleccionada()?.codigoUnidad || this.obtenerUnidadLimpia();
+  const subPathBase = `${this.tipoDocumento().toLowerCase()}/${unidadActual.toLowerCase()}`;
+  const pathCompletoArchivo = `${subPathBase}/${this.rutaNavegacion().join('/')}/${element.nombre}`;
+
+  const payload = {
+    pathArchivo: pathCompletoArchivo,
+    nombreArchivo: element.nombre,
+    unidad: unidadActual,
+    tipoDocumento: this.tipoDocumento()
+  };
+
+  this.dataService.post<any>('procesar/habilitar-imprenta', payload).subscribe({
+    next: (respuesta) => {
+      // 1. Al pasar a true, Angular renderiza instantáneamente el 4to icono postal.xlsx
+      element.activarConsolidadoImprenta = true;
+      element.cargandoHabilitar = false;
+
+      // 2. Notificamos reactivamente el refresco del arreglo de filas de Angular Material
+      this.archivos.set([...this.archivos()]);
+
+      this.snackBar.open('¡Consolidado habilitado! Archivo postal.xlsx generado con éxito.', 'OK', { duration: 4000 });
+    },
+    error: (err) => {
+      console.error('Error al habilitar:', err);
+      element.cargandoHabilitar = false;
+      this.snackBar.open('Error al procesar la habilitación del lote.', 'Cerrar', { duration: 3000 });
     }
-  }
+  });
+}
 
   ejecutarHabilitacion(element: any) {
       if (element.cargandoHabilitar) return;

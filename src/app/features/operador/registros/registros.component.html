@@ -85,85 +85,106 @@
         </td>
       </ng-container>
 
-      <ng-container matColumnDef="acciones">
-        <th mat-header-cell *matHeaderCellDef> Acciones </th>
-        <td mat-cell *matCellDef="let element">
-          
-          @if (esCarpetaProcesoValida(element)) {
-            <div class="group-actions" style="display: flex; align-items: center; gap: 6px;">
-              
-              @if (obtenerUnidadLimpia() !== 'imprenta') {
-                @if (element.excelOriginal) {
-                  <button mat-icon-button color="accent" 
-                          (click)="descargarEspecial(element.nombre, 'upload', element.excelOriginal)"
-                          matTooltip="Excel Original">
-                    <mat-icon>grid_on</mat-icon>
-                  </button>
-                }
+        <ng-container matColumnDef="acciones">
+          <th mat-header-cell *matHeaderCellDef> Acciones </th>
+          <td mat-cell *matCellDef="let element">
+            
+            @if (esCarpetaProcesoValida(element) || element.esDirectorio) {
+              <div class="group-actions" style="display: flex; align-items: center; gap: 6px;">
+                
+                @if (!esPerfilImprenta()) {
+                  
+                  @if (element.excelOriginal) {
+                    <button mat-icon-button color="accent" 
+                            (click)="descargarEspecial(element.nombre, 'upload', element.excelOriginal)"
+                            matTooltip="Excel Original">
+                      <mat-icon>grid_on</mat-icon>
+                    </button>
+                  }
 
-                @if (element.pdfReporte) {
-                  <button mat-icon-button color="primary" 
-                          (click)="descargarEspecial(element.nombre, 'REPORTES', element.pdfReporte)"
-                          matTooltip="Ver Reporte PDF">
-                    <mat-icon>picture_as_pdf</mat-icon>
-                  </button>
-                }
-
-                @if (element.pdfConsolidado) {
-                  <button mat-icon-button style="color: #7d2e44;"
-                          (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
-                          matTooltip="Cartas Consolidadas">
-                    <mat-icon>picture_as_pdf</mat-icon>
-                  </button>
-                }
-
-                @if (['tesoreria', '1juzgado', '2juzgado'].includes(obtenerUnidadLimpia())) {
-                  <button mat-flat-button 
-                          [color]="element.activarConsolidadoImprenta ? '' : 'primary'"
-                          [style.background-color]="element.activarConsolidadoImprenta ? '#e8f5e9' : null"
-                          [style.color]="element.activarConsolidadoImprenta ? '#2e7d32' : null"
-                          (click)="habilitarParaImprenta(element)"
-                          style="scale: 0.8; border-radius: 20px; margin-left: 8px;"
-                          [disabled]="element.cargandoHabilitar || element.activarConsolidadoImprenta">
-                    <mat-icon>{{ element.activarConsolidadoImprenta ? 'verified' : 'publish' }}</mat-icon>
-                    {{ element.activarConsolidadoImprenta ? 'Habilitado' : 'Habilitar' }}
-                  </button>
-                }
-              } @if (obtenerUnidadLimpia() === 'imprenta' && element.activarConsolidatedImprenta) {
-                <div class="imprenta-download-container" style="display: flex; align-items: center;">
-                  @if (element.pdfConsolidado) {
-                    @let descargas = element.descargasImprenta || [];
-                    @let tieneDescargas = descargas.length > 0;
-
-                    <button mat-icon-button 
-                            style="color: #2e7d32;" 
-                            (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
-                            [matTooltip]="tieneDescargas ? 'Re-descargar' : 'Descargar PDF'">
+                  @if (element.pdfReporte) {
+                    <button mat-icon-button color="primary" 
+                            (click)="descargarEspecial(element.nombre, 'REPORTES', element.pdfReporte)"
+                            matTooltip="Ver Reporte PDF">
                       <mat-icon>picture_as_pdf</mat-icon>
                     </button>
-
-                    @if (tieneDescargas) {
-                      <span class="badge-descargas" 
-                            style="font-weight: bold; color: #1565c0; font-size: 13px; margin-left: -2px;">
-                        {{ descargas.length }}
-                      </span>
-                    }
-                  } @else {
-                    <mat-spinner diameter="18" style="margin: 10px;"></mat-spinner>
                   }
-                </div>
-              } @if (element.cargandoDetalle) {
-                <mat-spinner diameter="20"></mat-spinner>
+
+                  @if (element.pdfConsolidado) {
+                    <button mat-icon-button style="color: #7d2e44;"
+                            (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
+                            matTooltip="Cartas Consolidadas">
+                      <mat-icon>picture_as_pdf</mat-icon>
+                    </button>
+                  }
+
+                  @if (element.activarConsolidadoImprenta) {
+                    <!--<button mat-icon-button style="color: #2e7d32;" 
+                            (click)="descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', 'postal.xlsx')"
+                            matTooltip="Descargar Archivo Postal (Correos de Chile)">
+                      <mat-icon>table_view</mat-icon>
+                    </button>-->
+                  }
+
+                  @if (['tesoreria', '1juzgado', '2juzgado'].includes(obtenerUnidadLimpia())) {
+                    <button mat-flat-button 
+                            [color]="element.activarConsolidadoImprenta ? '' : 'primary'"
+                            [style.background-color]="element.activarConsolidadoImprenta ? '#e8f5e9' : null"
+                            [style.color]="element.activarConsolidadoImprenta ? '#2e7d32' : null"
+                            (click)="habilitarParaImprenta(element); $event.stopPropagation()"
+                            style="scale: 0.8; border-radius: 20px; margin-left: 8px;"
+                            [disabled]="element.cargandoHabilitar || element.activarConsolidadoImprenta">
+                      <mat-icon>
+                        @if (element.cargandoHabilitar) { sync }
+                        @else if (element.activarConsolidadoImprenta) { verified }
+                        @else { publish }
+                      </mat-icon>
+                      {{ element.cargandoHabilitar ? 'Activando...' : (element.activarConsolidadoImprenta ? 'Habilitado' : 'Habilitar') }}
+                    </button>
+                  }
+                }
+
+                @if (esPerfilImprenta() && element.activarConsolidadoImprenta) {
+                  <div class="imprenta-download-container" style="display: flex; align-items: center;">
+                    @if (element.nombre.endsWith('.pdf') || element.pdfConsolidado) {
+                      @let descargas = element.descargasImprenta || element.descargasImprentaDetalle || [];
+                      @let tieneDescargas = descargas.length > 0;
+
+                      <button mat-icon-button 
+                              style="color: #2e7d32;" 
+                              (click)="!element.esDirectorio ? descargar(element.nombre) : descargarEspecial(element.nombre, 'CARTAS_CONSOLIDADAS', element.pdfConsolidado)"
+                              [matTooltip]="tieneDescargas ? 'Re-descargar' : 'Descargar PDF Consolidado'">
+                        <mat-icon>picture_as_pdf</mat-icon>
+                      </button>
+
+                      @if (tieneDescargas) {
+                        <span class="badge-descargas" style="font-weight: bold; color: #1565c0; font-size: 13px; margin-left: -2px;">
+                          {{ descargas.length }}
+                        </span>
+                      }
+                    } @else {
+                      <mat-spinner diameter="18" style="margin: 10px;"></mat-spinner>
+                    }
+                  </div>
+                }
+
+                @if (element.cargandoDetalle) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                }
+
+              </div>
+            }
+
+            @if (!element.esDirectorio) {
+              @if (!esPerfilImprenta() || element.activarConsolidadoImprenta) {
+                <button mat-icon-button color="primary" (click)="descargar(element.nombre)" matTooltip="Descargar Archivo">
+                  <mat-icon>download</mat-icon>
+                </button>
               }
+            }
 
-            </div> } @if (!element.esDirectorio) {
-            <button mat-icon-button color="primary" (click)="descargar(element.nombre)">
-              <mat-icon>download</mat-icon>
-            </button>
-          }
-
-        </td>
-      </ng-container>
+          </td>
+        </ng-container>
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
       <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>

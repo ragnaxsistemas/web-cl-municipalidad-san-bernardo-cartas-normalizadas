@@ -1,5 +1,5 @@
 import { Component, signal, inject, OnInit , ViewChild, TemplateRef ,ElementRef, computed } from '@angular/core';
-import { CommonModule } from '@angular/common'; // Para *ngIf, *ngFor y Pipes
+import { CommonModule } from '@angular/common'; 
 import { ActivatedRoute } from '@angular/router';
 
 // Angular Material Imports
@@ -14,27 +14,20 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
-import { FormsModule } from '@angular/forms'; // 🚩 Para manejar el input
-
+import { FormsModule } from '@angular/forms'; 
 import { DataService } from '@core/services/data.service';
 import { AuthService } from '@core/services/auth.service';
 import { Observable, forkJoin, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
-
-// 🚩 ESTOS SON LOS QUE FALTAN PARA EL FORMULARIO
-
-
 export interface RegistroNormalizar {
   tipo: string;
   unidad: string;
   carpeta: string;
-  nombre: string;
+  nombreExcel: string | null; // Cambiado de nombre a nombreExcel para que coincida con el mapeo
   observacion: string;
-  usuario?: string;
-  fecha: string;
-  seleccionado?: boolean; // 🚩 Para el Checkbox
+  creacion: string;
 }
 
 @Component({
@@ -48,7 +41,6 @@ export interface RegistroNormalizar {
     MatIconModule,
     MatCheckboxModule,
     MatCardModule,
-    // 🚩 AGRÉGALOS AQUÍ
     MatFormFieldModule,
     MatInputModule, 
     MatProgressSpinnerModule, 
@@ -57,7 +49,7 @@ export interface RegistroNormalizar {
   templateUrl: './normalizar-archivo.component.html',
   styleUrls: ['./normalizar-archivo.component.scss']
 })
-export class NormalizarComponent {
+export class NormalizarComponent implements OnInit {
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
   private dataService = inject(DataService);
@@ -66,22 +58,27 @@ export class NormalizarComponent {
 
   @ViewChild('loadingDialog') loadingDialogTpl!: TemplateRef<any>;
   
+  archivoGeneradoNombre = signal<string | null>(null);
+  private currentLoadingDialog: any = null;
   archivoCsvAdjunto = signal<File | null>(null);
   cargando = signal(false);
   tipoDocumento = signal<string>('cobranza');
-  ultimoProcesamiento = signal<any>(null);
-  cargandoUltimo = signal(false);
-  resultados = signal<any[]>([]); // Lista para la tabla
-  displayedColumns: string[] = ['tipo', 'unidad', 'creacion', 'observacion'];
+  resultados = signal<RegistroNormalizar[]>([]);
+  resultadosPendientes = signal<RegistroNormalizar[]>([]); // 💡 Todos los pendientes
+  resultadosProcesados = signal<RegistroNormalizar[]>([]);
+  
+  // 🚩 Añadimos la columna 'select' al inicio de la tabla
+  displayedColumns: string[] = ['select', 'tipo', 'unidad', 'creacion', 'observacion'];
+  displayedColumnsProcesados: string[] = ['tipo', 'unidad', 'creacion', 'observacion'];
+
+  // 🚩 Nueva señal para almacenar la fila seleccionada con el Checkbox
+  reporteSeleccionado = signal<RegistroNormalizar | null>(null);
 
   private definirTipoDocumentoPorUnidad() {
     const user = this.authService.user();
-    // Limpiamos el código de la unidad (ej: 'imsb_1juzgado' -> '1juzgado')
     const unidadCodigo = user?.unidadNegocio?.codigoUnidad?.replace('imsb_', '') || 
                         localStorage.getItem('unidadCodigo')?.replace('imsb_', '') || '';
 
-    // Si la unidad es un juzgado, el tipo de documento debe ser igual a la unidad
-    // De lo contrario, queda en 'cobranza' por defecto
     if (unidadCodigo.includes('1juzgado') || unidadCodigo.includes('2juzgado')) {
       this.tipoDocumento.set(unidadCodigo);
       console.log(`⚖️ Modo Juzgado detectado: ${unidadCodigo}`);
@@ -96,32 +93,29 @@ export class NormalizarComponent {
     this.cargarHistorialNormalizados();
   }
 
+  // 🚩 Manejador del cambio del Checkbox (Exclusivo: solo uno seleccionado a la vez)
+  onSeleccionarReporte(row: RegistroNormalizar, checked: boolean) {
+    if (checked) {
+      this.reporteSeleccionado.set(row);
+    } else {
+      if (this.reporteSeleccionado() === row) {
+        this.reporteSeleccionado.set(null);
+      }
+    }
+  }
+
   extraerFechaDeNombre(nombreCarpeta: string): string {
     if (!nombreCarpeta) return '---';
-
-    /**
-     * Buscamos: 
-     * (\d{4}) -> 4 números (año)
-     * [\-_]   -> un guion medio o bajo
-     * (\d{2}) -> 2 números (mes)
-     * [\-_]   -> un guion medio o bajo
-     * (\d{2}) -> 2 números (día)
-     */
     const matches = nombreCarpeta.match(/(\d{4})[\-_](\d{2})[\-_](\d{2})/);
 
     if (matches && matches.length >= 4) {
       const año = matches[1];
       const mes = matches[2];
       const dia = matches[3];
-      
-      // Retornamos el formato que necesitas para la tabla
       return `${dia}-${mes}-${año}`;
     }
 
-    // Si no hay coincidencia de fecha, pero tiene el formato de lote
-    // intentamos un split por cualquier separador común
     const partes = nombreCarpeta.split(/[_\-]/);
-    // Buscamos una parte que tenga longitud 4 (posible año)
     const indexAño = partes.findIndex(p => p.length === 4 && !isNaN(Number(p)));
     
     if (indexAño !== -1 && partes[indexAño + 2]) {
@@ -145,12 +139,8 @@ export class NormalizarComponent {
 
   cargarHistorialNormalizados() {
     const user = this.authService.user();
-    
-    // 1. Obtenemos el valor crudo (ej: '1juzgado' o 'cobranza')
     const valorTipoCrudo = this.tipoDocumento();
     
-    // 2. Normalizamos el tipo: si contiene 'juzgado', siempre será 'notificacion'
-    // de lo contrario, por defecto será 'cobranza' (o el valor que traiga si es tesorería)
     const tipoActual = valorTipoCrudo.toLowerCase().includes('juzgado') 
       ? 'notificacion' 
       : 'cobranza';
@@ -158,115 +148,214 @@ export class NormalizarComponent {
     const unidadCodigo = user?.unidadNegocio?.codigoUnidad?.replace('imsb_', '') || 
                         localStorage.getItem('unidadCodigo')?.replace('imsb_', '') || 'tesoreria';
     
-    // Log para verificar que ahora imprima "notificacion" o "cobranza"
-    console.log(`📂 Cargando historial para tipo normalizado: ${tipoActual}, unidad: ${unidadCodigo}`);
+    console.log(`%c📂 [Historial] Iniciando evaluación para tipo: ${tipoActual} | unidad: ${unidadCodigo}`, 'color: #2196F3; font-weight: bold;');
 
+    // 1. Listamos todas las carpetas del origen 'normalizado'
     this.dataService.listarArchivos('normalizado', tipoActual, unidadCodigo).pipe(
-      switchMap((res: any) => {
+      switchMap((res: any): Observable<any[]> => {
         const items = res.items || [];
         
-        const ultimaCarpeta = items
+        const carpetasNormalizadas = items
           .filter((item: any) => item.esDirectorio)
-          .sort((a: any, b: any) => b.nombre.localeCompare(a.nombre))
-          .slice(0, 1);
+          .sort((a: any, b: any) => b.nombre.localeCompare(a.nombre));
 
-        if (ultimaCarpeta.length === 0) return of([]);
+        console.log(`📋 [Historial] Carpetas base encontradas en 'normalizado':`, carpetasNormalizadas.map((c: any) => c.nombre));
 
-        const c = ultimaCarpeta[0];
+        if (carpetasNormalizadas.length === 0) return of([]);
 
-        return this.dataService.listarArchivos('normalizado', tipoActual, unidadCodigo, c.nombre).pipe(
-          map((resInterno: any) => {
-            const archivos = resInterno.items || [];
-            const excel = archivos.find((f: any) => f.nombre.endsWith('.xlsx'));
-            
-            return [{
-              tipo: tipoActual, // Aquí ya queda guardado como 'notificacion' o 'cobranza'
-              unidad: unidadCodigo,
-              carpeta: c.nombre,
-              nombreExcel: excel ? excel.nombre : null,
-              observacion: excel?.observacion || '---',
-              creacion: this.extraerFechaDeNombre(c.nombre)
-            }];
-          })
-        );
+        // 2. Por cada carpeta en normalizado, inspeccionamos su estado en producción
+        const peticionesCarpetas = carpetasNormalizadas.map((c: any) => {
+          const obsNormalizadoInterno = this.dataService.listarArchivos('normalizado', tipoActual, unidadCodigo, c.nombre);
+          const obsProduccionInterno = this.dataService.listarArchivos(tipoActual, unidadCodigo, c.nombre);
+
+          return forkJoin({ norm: obsNormalizadoInterno, prod: obsProduccionInterno }).pipe(
+            switchMap(({ norm, prod }: any) => {
+              const archivosNorm = norm.items || [];
+              const archivosProd = prod.items || [];
+
+              console.log(`🔍 [Carpeta: ${c.nombre}] Contenido en producción (primer nivel):`, archivosProd.map((p: any) => p.nombre));
+
+              // Buscamos el Excel original en la carpeta de normalizados para extraer metadatos
+              const excel = archivosNorm.find((f: any) => f.nombre.endsWith('.xlsx'));
+              
+              // DETECCIÓN: Verificamos si existe la subcarpeta CARTAS_CONSOLIDADAS en producción
+              const tieneSubcarpetaConsolidado = archivosProd.some(
+                (item: any) => item.esDirectorio && item.nombre === 'CARTAS_CONSOLIDADAS'
+              );
+
+              console.log(`❓ [Carpeta: ${c.nombre}] ¿Tiene directorio 'CARTAS_CONSOLIDADAS'?:`, tieneSubcarpetaConsolidado);
+
+              // Si NO tiene la subcarpeta, sigue estando pendiente
+              if (!tieneSubcarpetaConsolidado) {
+                return of({
+                  tipo: tipoActual,
+                  unidad: unidadCodigo,
+                  carpeta: c.nombre,
+                  nombreExcel: excel ? excel.nombre : null,
+                  observacion: excel?.observacion || '---',
+                  creacion: this.extraerFechaDeNombre(c.nombre),
+                  procesadoExitosamente: false,
+                  archivosFinales: []
+                });
+              }
+
+              // Si existe CARTAS_CONSOLIDADAS, hacemos el llamado anidado
+              console.log(`🚀 [Carpeta: ${c.nombre}] Llamando subcarpeta interna 'CARTAS_CONSOLIDADAS'...`);
+              return this.dataService.listarArchivos(tipoActual, unidadCodigo, c.nombre, 'CARTAS_CONSOLIDADAS').pipe(
+                map((subRes: any) => {
+                  const archivosInternos = subRes.items || [];
+                  console.log(`📦 [Carpeta: ${c.nombre}] Archivos dentro de CARTAS_CONSOLIDADAS:`, archivosInternos.map((f: any) => f.nombre));
+                  
+                  // Confirmamos el procesamiento si hay archivos reales adentro
+                  const tieneArchivosReales = archivosInternos.some((f: any) => !f.esDirectorio && f.nombre !== '.DS_Store');
+                  console.log(`📊 [Carpeta: ${c.nombre}] ¿Contiene archivos válidos finales?:`, tieneArchivosReales);
+
+                  const postalFile = archivosInternos.find((f: any) => f.nombre.includes('postal'));
+                  const observacionFinal = postalFile?.observacion && postalFile.observacion !== 'Sin observación'
+                    ? postalFile.observacion 
+                    : (excel?.observacion || '---');
+
+                  return {
+                    tipo: tipoActual,
+                    unidad: unidadCodigo,
+                    carpeta: c.nombre,
+                    nombreExcel: excel ? excel.nombre : null,
+                    observacion: observacionFinal,
+                    creacion: this.extraerFechaDeNombre(c.nombre),
+                    procesadoExitosamente: tieneArchivosReales,
+                    archivosFinales: archivosInternos
+                  };
+                })
+              );
+            })
+          );
+        });
+
+        return forkJoin<any[]>(peticionesCarpetas);
       })
     ).subscribe({
-      next: (res: any[]) => {
-        this.resultados.set(res);
+      next: (todasLasCarpetas: any[]) => {
+        console.log(`%c=== 🏁 RESULTADO TOTAL DE CARPETAS MAPEADAS ===`, 'color: #4CAF50; font-weight: bold;');
+        console.log(todasLasCarpetas);
+
+        // Separar pendientes
+        const pendientes = todasLasCarpetas.filter((item: any) => !item.procesadoExitosamente);
+        this.resultadosPendientes.set(pendientes);
+        console.log(`📌 [Resultados] Enviados a PENDIENTES:`, pendientes.map((p: any) => p.carpeta));
+
+        // Separar procesados
+        const procesados = todasLasCarpetas.filter((item: any) => item.procesadoExitosamente).slice(0, 5);
+        this.resultadosProcesados.set(procesados);
+        console.log(`%c✅ [Resultados] Enviados a PROCESADOS (Historial):`, 'color: #2e7d32; font-weight: bold;', procesados.map((p: any) => p.carpeta));
+        
+        this.reporteSeleccionado.set(null);
       },
       error: (err) => {
-        console.error('❌ Error historial:', err);
-        this.resultados.set([]);
+        console.error('❌ Error crítico en el flujo de historial:', err);
+        this.resultadosPendientes.set([]);
+        this.resultadosProcesados.set([]);
       }
     });
   }
 
   generarCartasFinales() {
-    const file = this.archivoCsvAdjunto();
-    const ultimo = this.resultados()[0];
-    const user = this.authService.user();
+  const file = this.archivoCsvAdjunto();
+  const user = this.authService.user();
+  const reporteElegido = this.reporteSeleccionado();
 
-    if (!file || this.cargando() || !user) return;
+  if (!file || this.cargando() || !user) return;
 
-    // --- Depuración: Ver qué trae el usuario ---
-    const codigoCrudo = user.unidadNegocio?.codigoUnidad || '';
-    console.log('🔍 Valor original de unidadNegocio.codigoUnidad:', codigoCrudo);
-
-    this.cargando.set(true);
-    this.snackBar.open('Proceso iniciado.', 'OK', { duration: 3000 });
-
-    // --- Lógica Dinámica Corregida ---
-    let tipo = 'cobranza'; 
-    let unidad = 'tesoreria';
-
-    // Limpiamos el código (quitamos imsb_ y pasamos a minúsculas)
-    const unidadLimpia = codigoCrudo.toLowerCase().replace('imsb_', '');
-    console.log('🧹 Unidad normalizada para lógica:', unidadLimpia);
-
-    if (unidadLimpia.includes('juzgado')) {
-      tipo = 'notificacion';
-      // Mantenemos el nombre de la unidad que espera el backend (juzgado o 1juzgado)
-      unidad = unidadLimpia; 
-    } else {
-      tipo = 'cobranza';
-      unidad = 'tesoreria';
-    }
-
-    console.log(`🚀 Enviando a endpoint -> Tipo: ${tipo}, Unidad: ${unidad}`);
-    // --------------------------------------------
-
-    const formData = new FormData();
-    formData.append('archivo', file);
-    formData.append('user', user.sub || 'usuario_desconocido');
-
-    if (ultimo?.nombreExcel) {
-      const rutaRelativa = `${ultimo.carpeta}/${ultimo.nombreExcel}`;
-      formData.append('rutaExcel', rutaRelativa);
-    }
-
-    const endpoint = `procesar-normalizacion/from-correos-to-merge/${tipo}/${unidad}`;
-
-    this.dataService.post<any>(endpoint, formData)
-      .subscribe({
-        next: (res) => {
-          this.snackBar.open('✅ ¡Cartas generadas con éxito!', 'Cerrar', { 
-            duration: 10000,
-            panelClass: ['success-snackbar'] 
-          });
-          this.archivoCsvAdjunto.set(null); 
-          this.cargarHistorialNormalizados();
-        },
-        error: (err) => {
-          console.error('❌ Error en la petición:', err);
-          this.snackBar.open('❌ Error en el proceso de cartas', 'Cerrar', { duration: 7000 });
-        },
-        complete: () => {
-          this.cargando.set(false);
-        }
-      });
+  if (!reporteElegido) {
+    this.snackBar.open('⚠️ Por favor, seleccione un reporte de la tabla para vincular con el CSV', 'Cerrar', { duration: 5000 });
+    return;
   }
+
+  this.cargando.set(true);
+  this.currentLoadingDialog = this.dialog.open(this.loadingDialogTpl, { disableClose: true });
+
+  const codigoCrudo = user.unidadNegocio?.codigoUnidad || '';
+  let tipo = 'cobranza'; 
+  let unidad = 'tesoreria';
+
+  const unidadLimpia = codigoCrudo.toLowerCase().replace('imsb_', '');
+
+  if (unidadLimpia.includes('juzgado')) {
+    tipo = 'notificacion';
+    unidad = unidadLimpia; 
+  } else {
+    tipo = 'cobranza';
+    unidad = 'tesoreria';
+  }
+
+  const formData = new FormData();
+  formData.append('archivo', file);
+  formData.append('user', user.sub || 'usuario_desconocido');
+
+  if (reporteElegido.nombreExcel) {
+    const rutaRelativa = `${reporteElegido.carpeta}/${reporteElegido.nombreExcel}`;
+    formData.append('rutaExcel', rutaRelativa);
+  }
+
+  const endpoint = `procesar-normalizacion/from-correos-to-merge/${tipo}/${unidad}`;
+
+  // 🚩 Tipamos la respuesta como <any> para leer las propiedades dinámicas del Map de Java
+  this.dataService.post<any>(endpoint, formData)
+    .subscribe({
+      next: (res) => {
+        this.snackBar.open('✅ ¡Cartas generadas con éxito!', 'Cerrar', { 
+          duration: 10000,
+          panelClass: ['success-snackbar'] 
+        });
+        
+        // 🚩 Extraemos el nombre del archivo final de la ruta (ej: /path/to/archivo_Merge.xlsx -> archivo_Merge.xlsx)
+        if (res && res.ruta) {
+          const partesRuta = res.ruta.split('/');
+          const nombreLimpio = partesRuta[partesRuta.length - 1];
+          this.archivoGeneradoNombre.set(nombreLimpio);
+        }
+
+        // Limpiamos la selección y recargamos historial (Ojo: no llamamos a resetearFormulario completo aquí para no borrar la señal del éxito de inmediato)
+        this.archivoCsvAdjunto.set(null); 
+        this.reporteSeleccionado.set(null);
+        
+        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+
+        this.cargarHistorialNormalizados();
+      },
+      error: (err) => {
+        console.error('❌ Error en la petición (500):', err);
+        this.snackBar.open('❌ Error interno en el servidor al procesar las cartas', 'Cerrar', { duration: 7000 });
+        
+        this.cargando.set(false);
+        this.cerrarModalCarga();
+        this.resetearFormulario();
+      },
+      complete: () => {
+        this.cargando.set(false);
+        this.cerrarModalCarga();
+      }
+    });
+}
+
+public resetearFormulario() {
+  this.archivoCsvAdjunto.set(null);
+  this.reporteSeleccionado.set(null);
+  this.archivoGeneradoNombre.set(null); // Limpiamos también el label de éxito si se resetea por error
   
-  // Implementación básica de Drag & Drop (opcional)
+  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+  if (fileInput) {
+    fileInput.value = '';
+  }
+}
+
+  private cerrarModalCarga() {
+    if (this.currentLoadingDialog) {
+      this.currentLoadingDialog.close();
+      this.currentLoadingDialog = null;
+    }
+  }
+
   isDragging = signal(false);
   onDragOver(e: DragEvent) { e.preventDefault(); this.isDragging.set(true); }
   onDragLeave(e: DragEvent) { e.preventDefault(); this.isDragging.set(false); }
